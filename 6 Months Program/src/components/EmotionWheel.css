@@ -1,0 +1,110 @@
+.emotion-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 2rem;
+  justify-content: center;
+}
+
+.emotion-header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.emotion-header h2 {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--text-main);
+  margin-bottom: 0.5rem;
+}
+
+.emotion-header p {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.emotion-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  max-width: 600px;
+  width: 100%;
+}
+
+.emotion-group {
+  opacity: 0;
+}
+
+.emotion-group:nth-child(1) { animation-delay: 0.1s; }
+.emotion-group:nth-child(2) { animation-delay: 0.25s; }
+.emotion-group:nth-child(3) { animation-delay: 0.4s; }
+
+.group-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  margin-bottom: 0.75rem;
+  padding-left: 0.25rem;
+}
+
+.group-label.cat-positive { color: var(--earth); }
+.group-label.cat-neutral { color: var(--calm); }
+.group-label.cat-negative { color: var(--warm); }
+
+.emotion-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.emotion-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 50px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  transition: all 0.3s ease;
+}
+
+.emotion-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-glow);
+  color: var(--text-main);
+  transform: translateY(-2px);
+}
+
+.emotion-btn.selected.cat-positive {
+  background: rgba(181, 228, 140, 0.12);
+  border-color: var(--earth);
+  color: var(--earth);
+  box-shadow: 0 0 15px var(--earth-glow);
+}
+
+.emotion-btn.selected.cat-neutral {
+  background: rgba(165, 216, 255, 0.12);
+  border-color: var(--calm);
+  color: var(--calm);
+  box-shadow: 0 0 15px var(--calm-glow);
+}
+
+.emotion-btn.selected.cat-negative {
+  background: rgba(255, 214, 165, 0.12);
+  border-color: var(--warm);
+  color: var(--warm);
+  box-shadow: 0 0 15px var(--warm-glow);
+}
+
+.emotion-emoji {
+  font-size: 1.1rem;
+}
+
+.emotion-name {
+  font-weight: 500;
+}

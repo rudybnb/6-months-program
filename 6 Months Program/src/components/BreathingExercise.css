@@ -1,0 +1,143 @@
+.breathing-session-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  padding: 3rem 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.breathing-start {
+  text-align: center;
+}
+
+.breathing-prep {
+  display: block;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+  margin-bottom: 1.5rem;
+}
+
+.breathing-start h1 {
+  font-family: var(--font-display);
+  font-size: 3.5rem;
+  font-weight: 300;
+  font-style: italic;
+  color: var(--text-main);
+  margin-bottom: 2rem;
+}
+
+.breathing-start p {
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  margin-bottom: 3rem;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6;
+}
+
+.breathing-begin-btn {
+  padding: 1.2rem 3rem;
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: var(--text-main);
+  background: transparent;
+  border: 1px solid var(--text-main);
+  border-radius: 4px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.breathing-begin-btn:hover {
+  background: var(--text-main);
+  color: var(--bg-deep);
+  transform: translateY(-2px);
+}
+
+/* Active Session */
+.breathing-active-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rem;
+}
+
+.breathing-orb-center {
+  position: relative;
+  width: 250px;
+  height: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.breathing-orb-core {
+  width: 100px;
+  height: 100px;
+  background: var(--text-main);
+  border-radius: 50%;
+  opacity: 0.1;
+  transition: transform 4s cubic-bezier(0.4, 0, 0.2, 1), opacity 4s ease;
+}
+
+.breathing-orb-ripple {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--text-main);
+  border-radius: 50%;
+  opacity: 0.05;
+  transition: transform 4s cubic-bezier(0.4, 0, 0.2, 1), opacity 4s ease;
+}
+
+/* Animation Phases */
+.breathing-orb-center.inhale .breathing-orb-core {
+  transform: scale(2);
+  opacity: 0.2;
+}
+
+.breathing-orb-center.inhale .breathing-orb-ripple {
+  transform: scale(1.1);
+  opacity: 0.1;
+}
+
+.breathing-orb-center.exhale .breathing-orb-core {
+  transform: scale(1);
+  opacity: 0.1;
+}
+
+.breathing-orb-center.exhale .breathing-orb-ripple {
+  transform: scale(0.9);
+  opacity: 0.05;
+}
+
+.breathing-orb-center.grounding .breathing-orb-core {
+  transform: scale(1.2);
+  opacity: 0.15;
+}
+
+.breathing-guidance-text {
+  height: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.breathing-guidance-text p {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 300;
+  font-style: italic;
+  color: var(--text-main);
+  line-height: 1.4;
+  max-width: 500px;
+}

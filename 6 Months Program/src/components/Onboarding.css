@@ -1,0 +1,229 @@
+.onboarding-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-deep);
+  padding: 3rem 1.5rem;
+  position: relative;
+}
+
+.onboarding-content {
+  width: 100%;
+  max-width: 700px;
+  position: relative;
+  z-index: 1;
+}
+
+.onboarding-step {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  text-align: left;
+}
+
+.onboarding-title {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-main);
+  margin: 0;
+  line-height: 1.1;
+}
+
+.onboarding-subtitle {
+  font-size: 1.4rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+  font-style: italic;
+  font-family: 'Georgia', serif;
+}
+
+.onboarding-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.onboarding-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.onboarding-helper {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: -0.5rem 0 0.5rem 0;
+}
+
+.onboarding-input,
+.onboarding-textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1.5rem;
+  color: var(--text-main);
+  font-size: 1.25rem;
+  transition: all 0.3s ease;
+  resize: none;
+}
+
+.onboarding-input:focus,
+.onboarding-textarea:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.onboarding-btn {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 1.5rem 3rem;
+  border-radius: 50px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: not-allowed;
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+  align-self: flex-start;
+}
+
+.onboarding-btn.active {
+  background: var(--text-main);
+  color: var(--bg-deep);
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(255, 255, 255, 0.1);
+}
+
+.onboarding-btn.active:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 15px 40px rgba(255, 255, 255, 0.2);
+}
+
+/* Theme Chips */
+.theme-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.theme-chip {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  padding: 0.75rem 1.5rem;
+  border-radius: 50px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.theme-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.theme-chip.selected {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--text-main);
+  color: var(--text-main);
+}
+
+/* Tone Options */
+.tone-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.tone-btn {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 1.5rem;
+  border-radius: 20px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tone-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.tone-btn.selected {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--text-main);
+}
+
+.tone-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.tone-desc {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* Promise Preview */
+.promise-preview-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2.5rem;
+  border-radius: 24px;
+  margin: 1rem 0;
+}
+
+.promise-text {
+  font-size: 1.3rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  font-family: 'Georgia', serif;
+  font-style: italic;
+  margin: 0;
+}
+
+.days-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.day-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  padding: 1rem 0.5rem;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.day-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.day-btn.selected {
+  background: var(--text-main);
+  color: var(--bg-deep);
+  border-color: var(--text-main);
+}
+
+.time-input {
+  color: var(--text-main);
+  max-width: 200px;
+}

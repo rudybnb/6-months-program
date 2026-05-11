@@ -1,0 +1,124 @@
+.prep-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 500px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.prep-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.prep-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.prep-header h2 {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--text-main);
+  margin-bottom: 0.5rem;
+}
+
+.prep-header p {
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.prep-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  margin-bottom: 2.5rem;
+}
+
+.prep-item {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-subtle);
+  padding: 1.25rem;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.prep-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-2px);
+  border-color: var(--text-faint);
+}
+
+.prep-item.checked {
+  background: rgba(139, 195, 74, 0.1);
+  border-color: #8bc34a;
+}
+
+.prep-checkbox {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--text-faint);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.prep-item.checked .prep-checkbox {
+  background: #8bc34a;
+  border-color: #8bc34a;
+}
+
+.prep-checkmark {
+  color: var(--bg-deep);
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.prep-label {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.prep-item.checked .prep-label {
+  color: var(--text-main);
+}
+
+.prep-complete-btn {
+  padding: 1rem 3rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--bg-deep);
+  background: var(--text-main);
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
+}
+
+.prep-complete-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.2);
+}
+
+.prep-bottom-message {
+  text-align: center;
+  font-style: italic;
+  color: var(--text-faint);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 400px;
+  margin: 0 auto 2rem;
+  opacity: 0.8;
+}
