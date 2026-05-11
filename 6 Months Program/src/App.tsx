@@ -14,7 +14,6 @@ import type {
 } from './types';
 import { WeeklyAudit } from './components/WeeklyAudit';
 import { IdentityTimeline } from './components/IdentityTimeline';
-import { TerminalLogin } from './components/TerminalLogin';
 
 function App() {
   const [appData, setAppData] = useLocalStorage<AppData>('inner-work-data', {
@@ -29,7 +28,6 @@ function App() {
   const [showCompletion, setShowCompletion] = useState(false);
   
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [isTerminalAuthenticated, setIsTerminalAuthenticated] = useState(false);
 
   const handleStartSession = (type: SessionType) => {
     setActiveSession(type);
@@ -97,14 +95,6 @@ function App() {
     sessionStorage.clear();
     window.location.href = window.location.origin + window.location.pathname + '?reset=true';
   };
-
-  if (!isTerminalAuthenticated) {
-    return (
-      <>
-        <TerminalLogin onUnlock={() => setIsTerminalAuthenticated(true)} />
-      </>
-    );
-  }
 
   // Completion screen
   if (showCompletion) {
