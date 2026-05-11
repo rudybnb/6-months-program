@@ -1,4 +1,5 @@
 import React from 'react';
+import { User, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import type { AppData } from '../types';
 import { DailyGuidance } from './DailyGuidance';
 import './HomeScreen.css';
@@ -85,29 +86,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       <div className="home-content">
         <header className="home-header">
-          <div className="home-greeting fade-up">
-            <h1>{greetingMsg}, {firstName}</h1>
-            <p className="home-subtitle">“Today is not about doing everything. It is about taking the next right step.”</p>
-          </div>
-          <div className="header-actions fade-in">
-            <button 
-              className={`voice-toggle-btn ${appData.voiceEnabled ? 'enabled' : ''}`} 
-              onClick={onToggleVoice}
-            >
-              <span>{appData.voiceEnabled ? 'Voice On' : 'Voice Off'}</span>
-            </button>
-            <button className="settings-btn" onClick={onEditProfile} title="Your Profile">
-              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
-            </button>
-            <button className="reset-btn-nuclear" onClick={onReset} title="Clear all data permanently">
-              FORCE NUCLEAR RESET
-            </button>
-            <button className="test-btn-evening" onClick={() => onStartSession('evening')} title="Skip to evening for testing">
-              TEST EVENING
-            </button>
+          <div className="header-top">
+            <div className="user-greeting fade-up">
+              <h1>{greetingMsg}, {firstName}</h1>
+              <p className="header-quote">“Today is not about doing everything. It is about taking the next right step.”</p>
+            </div>
+            
+            <div className="header-actions fade-in">
+              <button 
+                className={`voice-toggle-minimal ${appData.voiceEnabled ? 'active' : ''}`}
+                onClick={onToggleVoice}
+                title="Toggle Mentor Voice"
+              >
+                {appData.voiceEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+                <span>{appData.voiceEnabled ? 'Voice On' : 'Voice Off'}</span>
+              </button>
+              
+              <button className="settings-trigger" onClick={onEditProfile} title="Your Profile">
+                <User size={20} />
+              </button>
+
+              <button className="reset-trigger-minimal" onClick={onReset} title="Reset All Data">
+                <RefreshCw size={18} />
+              </button>
+            </div>
           </div>
         </header>
 
