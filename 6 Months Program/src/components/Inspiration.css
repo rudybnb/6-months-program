@@ -156,7 +156,7 @@
   font-size: 1rem;
   font-weight: 500;
   color: var(--accent);
-  border: 1px solid rgba(200, 162, 255, 0.3);
+  border: 1px solid var(--border-glow);
   border-radius: 50px;
   letter-spacing: 0.5px;
   transition: all 0.4s ease;

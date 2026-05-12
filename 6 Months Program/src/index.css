@@ -1,26 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap');
 
 :root {
-  --bg-deep: #050508;
+  --bg-deep: #0B1020;
   --bg-surface: rgba(255, 255, 255, 0.03);
   --bg-surface-hover: rgba(255, 255, 255, 0.06);
-  --bg-card: rgba(255, 255, 255, 0.04);
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-glow: rgba(255, 255, 255, 0.12);
+  --bg-card: rgba(11, 16, 32, 0.6);
+  --border-subtle: rgba(214, 194, 161, 0.1);
+  --border-glow: rgba(214, 194, 161, 0.2);
 
-  --accent: #c8a2ff;
-  --accent-glow: rgba(200, 162, 255, 0.3);
-  --accent-soft: rgba(200, 162, 255, 0.1);
-  --warm: #ffd6a5;
-  --warm-glow: rgba(255, 214, 165, 0.2);
-  --calm: #a5d8ff;
-  --calm-glow: rgba(165, 216, 255, 0.2);
-  --earth: #b5e48c;
-  --earth-glow: rgba(181, 228, 140, 0.2);
+  --accent: #D6C2A1;
+  --accent-glow: rgba(214, 194, 161, 0.25);
+  --accent-soft: rgba(214, 194, 161, 0.1);
+  --warm: #D6C2A1;
+  --warm-glow: rgba(214, 194, 161, 0.2);
+  --calm: #8E94A5;
+  --calm-glow: rgba(142, 148, 165, 0.2);
+  --earth: #A3B18A;
+  --earth-glow: rgba(163, 177, 138, 0.2);
 
-  --text-main: #f0eef5;
-  --text-muted: #7a7590;
-  --text-faint: #4a4560;
+  --text-main: #FDFCFB;
+  --text-muted: #A1A9C0;
+  --text-faint: #5D6478;
 
   --font-body: 'Inter', -apple-system, sans-serif;
   --font-display: 'Playfair Display', Georgia, serif;
@@ -58,9 +58,9 @@ body::before {
   right: 0;
   bottom: 0;
   background:
-    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(200, 162, 255, 0.04), transparent),
-    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(165, 216, 255, 0.03), transparent),
-    radial-gradient(ellipse 50% 50% at 50% 90%, rgba(255, 214, 165, 0.02), transparent);
+    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(214, 194, 161, 0.04), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(142, 148, 165, 0.03), transparent),
+    radial-gradient(ellipse 50% 50% at 50% 90%, rgba(214, 194, 161, 0.02), transparent);
   pointer-events: none;
   z-index: 0;
   animation: ambientShift 20s ease-in-out infinite alternate;

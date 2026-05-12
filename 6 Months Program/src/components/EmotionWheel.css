@@ -81,21 +81,21 @@
 }
 
 .emotion-btn.selected.cat-positive {
-  background: rgba(181, 228, 140, 0.12);
+  background: var(--earth-glow);
   border-color: var(--earth);
   color: var(--earth);
   box-shadow: 0 0 15px var(--earth-glow);
 }
 
 .emotion-btn.selected.cat-neutral {
-  background: rgba(165, 216, 255, 0.12);
+  background: var(--calm-glow);
   border-color: var(--calm);
   color: var(--calm);
   box-shadow: 0 0 15px var(--calm-glow);
 }
 
 .emotion-btn.selected.cat-negative {
-  background: rgba(255, 214, 165, 0.12);
+  background: var(--warm-glow);
   border-color: var(--warm);
   color: var(--warm);
   box-shadow: 0 0 15px var(--warm-glow);

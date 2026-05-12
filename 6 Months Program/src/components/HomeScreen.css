@@ -16,7 +16,7 @@
   width: 500px;
   height: 500px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(200, 162, 255, 0.04), transparent 70%);
+  background: radial-gradient(circle, rgba(214, 194, 161, 0.04), transparent 70%);
   pointer-events: none;
   animation: ambientPulse 8s ease-in-out infinite;
 }
@@ -199,20 +199,21 @@
 .action-btn.main-start {
   width: 100%;
   padding: 1.75rem;
-  background: var(--text-primary);
-  color: var(--bg-primary);
+  background: var(--text-main);
+  color: var(--bg-deep);
   border: none;
   border-radius: 20px;
   font-size: 1.3rem;
   font-weight: 800;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-  box-shadow: 0 10px 40px rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 40px rgba(214, 194, 161, 0.15);
 }
 
 .action-btn.main-start:hover {
   transform: translateY(-4px);
-  box-shadow: 0 15px 50px rgba(255, 255, 255, 0.2);
+  box-shadow: 0 15px 50px rgba(214, 194, 161, 0.25);
+  background: var(--accent);
 }
 
 .day-complete-msg {
