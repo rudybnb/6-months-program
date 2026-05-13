@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { speechService } from '../services/speech';
+import { Volume2 } from 'lucide-react';
 import './BreathingExercise.css';
 
 interface BreathingExerciseProps {
@@ -8,18 +9,23 @@ interface BreathingExerciseProps {
 
 export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const isMounted = useRef(true);
   const [sessionState, setSessionState] = useState<'intro' | 'active' | 'complete'>('intro');
   const [phase, setPhase] = useState<'idle' | 'inhale' | 'exhale' | 'grounding' | 'complete'>('idle');
   const [displayText, setDisplayText] = useState('');
+  const [volume, setVolume] = useState(0.3);
 
   useEffect(() => {
+    isMounted.current = true;
+    
     // Setup Handpan meditation music
     const audio = new Audio('https://assets.mixkit.co/music/preview/mixkit-meditation-431.mp3');
     audio.loop = true;
-    audio.volume = 0.3;
+    audio.volume = volume;
     audioRef.current = audio;
 
     return () => {
+      isMounted.current = false;
       speechService.stop();
       if (audioRef.current) {
         audioRef.current.pause();
@@ -27,6 +33,13 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
       }
     };
   }, []);
+
+  // Sync volume
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
 
   const runSession = async () => {
     setSessionState('active');
@@ -51,11 +64,14 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
     ];
 
     for (const step of steps) {
+      if (!isMounted.current) return;
       setPhase(step.phase as any);
       setDisplayText(step.text);
       speechService.speak(step.text);
       await new Promise(resolve => setTimeout(resolve, step.delay));
     }
+
+    if (!isMounted.current) return;
 
     if (audioRef.current) {
       const fadeInterval = setInterval(() => {
@@ -127,9 +143,23 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
       )}
 
       {sessionState === 'complete' && renderIntroContent(true)}
+
+      {/* Volume Control */}
+      <div className="breathing-volume-control fade-in">
+        <Volume2 size={18} />
+        <input 
+          type="range" 
+          min="0" 
+          max="1" 
+          step="0.01" 
+          value={volume} 
+          onChange={(e) => setVolume(parseFloat(e.target.value))}
+        />
+      </div>
     </div>
   );
 };
+
 
 
 
