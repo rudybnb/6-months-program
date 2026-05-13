@@ -78,7 +78,7 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
       if (!isMounted.current) return;
       setPhase(step.phase as any);
       setDisplayText(step.text);
-      speechService.speak(step.text);
+      // Removed speechService.speak to have only handpan music
       await wait(step.delay);
     }
 
