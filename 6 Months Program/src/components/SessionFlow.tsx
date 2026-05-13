@@ -6,7 +6,6 @@ import { Inspiration } from './Inspiration';
 import { WorkoutSession } from './WorkoutSession';
 import { PreparationChecklist } from './PreparationChecklist';
 import { PastReflectionComparison } from './PastReflectionComparison';
-import { BreathingIntro } from './BreathingIntro';
 import {
   DEFAULT_AFFIRMATIONS,
 } from '../types';
@@ -128,7 +127,6 @@ export const SessionFlow: React.FC<SessionFlowProps> = ({ type, profile, morning
 
   // ─── MORNING STEPS ───
   const morningSteps = useMemo(() => [
-    { id: 'breathing-intro', component: <BreathingIntro onStart={nextStep} /> },
     { id: 'breathing', component: <BreathingExercise onComplete={nextStep} /> },
     { id: 'story', component: (
       <TherapyPrompt

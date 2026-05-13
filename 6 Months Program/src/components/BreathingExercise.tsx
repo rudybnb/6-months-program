@@ -8,12 +8,15 @@ interface BreathingExerciseProps {
 
 export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [started, setStarted] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'inhale' | 'exhale' | 'grounding' | 'complete'>('idle');
+  const [displayText, setDisplayText] = useState('');
 
   useEffect(() => {
-    // Pre-load audio
+    // Setup audio object but don't play yet
     const audio = new Audio('https://assets.mixkit.co/music/preview/mixkit-soft-ambient-627.mp3');
     audio.loop = true;
-    audio.volume = 0.15; // Soft volume
+    audio.volume = 0.25; // Slightly louder but still soft
     audioRef.current = audio;
 
     return () => {
@@ -25,16 +28,14 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
     };
   }, []);
 
-  const [started, setStarted] = useState(false);
-  const [phase, setPhase] = useState<'idle' | 'inhale' | 'exhale' | 'grounding' | 'complete'>('idle');
-  const [displayText, setDisplayText] = useState('');
-
   const runSession = async () => {
     setStarted(true);
     
-    // Start music
+    // Attempt to play music - triggered by user click
     if (audioRef.current) {
-      audioRef.current.play().catch(err => console.log("Audio playback failed:", err));
+      audioRef.current.play().catch(err => {
+        console.error("Audio playback failed:", err);
+      });
     }
     
     const steps = [
@@ -62,8 +63,8 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
     // Fade out music
     if (audioRef.current) {
       const fadeInterval = setInterval(() => {
-        if (audioRef.current && audioRef.current.volume > 0.01) {
-          audioRef.current.volume -= 0.01;
+        if (audioRef.current && audioRef.current.volume > 0.02) {
+          audioRef.current.volume -= 0.02;
         } else {
           clearInterval(fadeInterval);
           if (audioRef.current) audioRef.current.pause();
@@ -77,10 +78,33 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
   return (
     <div className="breathing-session-container">
       {!started ? (
-        <div className="breathing-start fade-up">
-          <span className="breathing-prep">Find a comfortable seat.</span>
-          <h1>A Moment of Calm</h1>
-          <p>We will take one minute to slow down and listen to what’s real.</p>
+        <div className="breathing-intro-content fade-up">
+          <span className="intro-label">Step 1: The Reset</span>
+          <h1>Why We Breathe</h1>
+          
+          <div className="intro-body">
+            <p>
+              Your breath is the only part of your nervous system you can control. 
+              When you wake up, your body is often stuck in a fog of cortisol (the stress hormone). 
+              If you don't reset it, you spend your day <strong>reacting</strong> instead of <strong>executing</strong>.
+            </p>
+
+            <div className="expert-box">
+              <div className="expert-cite">
+                <strong>Robin Sharma</strong> calls this the "Victory Hour" foundation. 
+                He teaches that controlled breathing prepares your brain for focus by quieting the "monkey mind."
+              </div>
+              <div className="expert-cite">
+                <strong>Dr. Andrew Huberman</strong> uses the "Physiological Sigh" to rapidly lower heart rate and switch the brain from stress to calm.
+              </div>
+            </div>
+
+            <p className="intro-instruction">
+              We will take one minute. No thoughts, no goals. Just the rhythm of your life.<br />
+              Sit tall. Relax your shoulders.
+            </p>
+          </div>
+
           <button className="breathing-begin-btn" onClick={runSession}>
             Begin The Reset
           </button>
@@ -100,4 +124,5 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
     </div>
   );
 };
+
 
