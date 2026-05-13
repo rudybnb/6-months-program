@@ -10,15 +10,18 @@ interface BreathingExerciseProps {
 export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const isMounted = useRef(true);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   const [sessionState, setSessionState] = useState<'intro' | 'active' | 'complete'>('intro');
   const [phase, setPhase] = useState<'idle' | 'inhale' | 'exhale' | 'grounding' | 'complete'>('idle');
   const [displayText, setDisplayText] = useState('');
-  const [volume, setVolume] = useState(0.3);
+  const [volume, setVolume] = useState(0.4);
 
   useEffect(() => {
     isMounted.current = true;
     
     // Setup Handpan meditation music
+    // Removing crossOrigin to allow simple playback from external sources
     const audio = new Audio('https://assets.mixkit.co/music/preview/mixkit-meditation-431.mp3');
     audio.loop = true;
     audio.volume = volume;
@@ -26,6 +29,7 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
 
     return () => {
       isMounted.current = false;
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       speechService.stop();
       if (audioRef.current) {
         audioRef.current.pause();
@@ -41,11 +45,18 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
     }
   }, [volume]);
 
+  const wait = (ms: number) => new Promise(resolve => {
+    timeoutRef.current = setTimeout(resolve, ms);
+  });
+
   const runSession = async () => {
     setSessionState('active');
     
     if (audioRef.current) {
-      audioRef.current.play().catch(err => console.error("Audio failed:", err));
+      audioRef.current.play().catch(err => {
+        console.error("Audio playback error:", err);
+        // Fallback or just ignore if it's a browser policy issue
+      });
     }
     
     const steps = [
@@ -68,20 +79,21 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
       setPhase(step.phase as any);
       setDisplayText(step.text);
       speechService.speak(step.text);
-      await new Promise(resolve => setTimeout(resolve, step.delay));
+      await wait(step.delay);
     }
 
     if (!isMounted.current) return;
 
+    // Final cleanup of the active session
     if (audioRef.current) {
       const fadeInterval = setInterval(() => {
-        if (audioRef.current && audioRef.current.volume > 0.02) {
-          audioRef.current.volume -= 0.02;
+        if (audioRef.current && audioRef.current.volume > 0.05) {
+          audioRef.current.volume -= 0.05;
         } else {
           clearInterval(fadeInterval);
           if (audioRef.current) audioRef.current.pause();
         }
-      }, 150);
+      }, 200);
     }
 
     setSessionState('complete');
@@ -145,7 +157,7 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
       {sessionState === 'complete' && renderIntroContent(true)}
 
       {/* Volume Control */}
-      <div className="breathing-volume-control fade-in">
+      <div className="breathing-volume-control fade-in" style={{ zIndex: 1000 }}>
         <Volume2 size={18} />
         <input 
           type="range" 
@@ -159,6 +171,7 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
     </div>
   );
 };
+
 
 
 

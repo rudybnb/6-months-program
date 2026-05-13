@@ -270,11 +270,13 @@ export const SessionFlow: React.FC<SessionFlowProps> = ({ type, profile, morning
       </div>
 
       {/* Navigation buttons */}
-      {stepIndex > 0 && (
-        <button className="session-back-btn" onClick={prevStep} title="Back">
-          ←
-        </button>
-      )}
+      <button 
+        className="session-back-btn" 
+        onClick={stepIndex > 0 ? prevStep : onExit} 
+        title={stepIndex > 0 ? "Back" : "Return Home"}
+      >
+        ←
+      </button>
 
       <button className="session-exit-btn" onClick={onExit} title="Exit Session">
         ✕
