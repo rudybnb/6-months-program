@@ -10,7 +10,7 @@ interface BreathingExerciseProps {
 export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const isMounted = useRef(true);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<any>(null);
   
   const [sessionState, setSessionState] = useState<'intro' | 'active' | 'complete'>('intro');
   const [phase, setPhase] = useState<'idle' | 'inhale' | 'exhale' | 'grounding' | 'complete'>('idle');
