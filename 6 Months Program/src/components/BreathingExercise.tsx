@@ -20,18 +20,20 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
   useEffect(() => {
     isMounted.current = true;
     
-    // Setup Handpan meditation music
-    // Removing crossOrigin to allow simple playback from external sources
-    const audio = new Audio('https://assets.mixkit.co/music/preview/mixkit-meditation-431.mp3');
+    // Using a more stable meditation track URL (The Gentle Way by Chosic)
+    const audio = new Audio('https://www.chosic.com/wp-content/uploads/2021/04/The-Gentle-Way.mp3');
     audio.loop = true;
     audio.volume = volume;
     audioRef.current = audio;
+
+    console.log("Audio initialized with URL: https://www.chosic.com/wp-content/uploads/2021/04/The-Gentle-Way.mp3");
 
     return () => {
       isMounted.current = false;
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       speechService.stop();
       if (audioRef.current) {
+        console.log("Cleaning up audio session");
         audioRef.current.pause();
         audioRef.current = null;
       }
@@ -53,7 +55,10 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
     setSessionState('active');
     
     if (audioRef.current) {
-      audioRef.current.play().catch(err => {
+      console.log("Attempting to play background music...");
+      audioRef.current.play().then(() => {
+        console.log("Background music playing successfully.");
+      }).catch(err => {
         console.error("Audio playback error:", err);
         // Fallback or just ignore if it's a browser policy issue
       });
