@@ -30,7 +30,7 @@ export const BreathingIntro: React.FC<BreathingIntroProps> = ({ onStart }) => {
           </div>
 
           <p className="intro-instruction">
-            We will take 2 minutes. No thoughts, no goals. Just the rhythm of your life.
+            We will take one minute. No thoughts, no goals. Just the rhythm of your life.
             Sit tall. Relax your shoulders.
           </p>
         </div>

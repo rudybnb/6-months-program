@@ -21,29 +21,6 @@
   box-shadow: 0 0 10px var(--accent-glow);
 }
 
-.session-exit-btn {
-  position: fixed;
-  top: 1.5rem;
-  right: 1.5rem;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid var(--border-subtle);
-  color: var(--text-faint);
-  font-size: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  transition: all 0.3s ease;
-}
-
-.session-exit-btn:hover {
-  border-color: var(--border-glow);
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.05);
-}
-
 .session-step {
   animation: fadeIn 0.5s var(--ease-out) forwards;
 }

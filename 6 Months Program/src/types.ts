@@ -84,19 +84,6 @@ export const EVENING_PROMPTS = [
   'Where did I grow today — even slightly?',
 ];
 
-export const EVENING_QUOTES = [
-  "Don't stop when you're tired. Stop when you're done.",
-  "Discipline equals freedom.",
-  "The only bad workout is the one that didn't happen.",
-  "You cannot out-train a bad diet, and you cannot out-work a weak mind.",
-  "We suffer one of two things. Pain of discipline or pain of regret.",
-  "Win the evening to win the morning.",
-  "Your future is created by what you do today, not tomorrow.",
-  "Tough times never last, but tough people do.",
-  "Rest if you must, but don't you quit.",
-  "Preparation is the separation."
-];
-
 // ─── Pillar Types ───
 export type Pillar = 'mind' | 'body' | 'soul' | 'emotions';
 

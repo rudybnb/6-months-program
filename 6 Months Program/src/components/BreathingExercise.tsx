@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { speechService } from '../services/speech';
 import './BreathingExercise.css';
 
@@ -7,9 +7,21 @@ interface BreathingExerciseProps {
 }
 
 export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete }) => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
+    // Pre-load audio
+    const audio = new Audio('https://assets.mixkit.co/music/preview/mixkit-soft-ambient-627.mp3');
+    audio.loop = true;
+    audio.volume = 0.15; // Soft volume
+    audioRef.current = audio;
+
     return () => {
       speechService.stop();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
     };
   }, []);
 
@@ -20,17 +32,22 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
   const runSession = async () => {
     setStarted(true);
     
+    // Start music
+    if (audioRef.current) {
+      audioRef.current.play().catch(err => console.log("Audio playback failed:", err));
+    }
+    
     const steps = [
       { text: "Take a slow breath in.", phase: 'inhale', delay: 4000 },
-      { text: "And slowly breathe out.", phase: 'exhale', delay: 4000 },
+      { text: "And slowly breathe out.", phase: 'exhale', delay: 5000 },
       { text: "Again. Inhale gently.", phase: 'inhale', delay: 4000 },
-      { text: "Exhale the tension you’ve been carrying.", phase: 'exhale', delay: 5000 },
-      { text: "You do not need to solve everything right now.", phase: 'grounding', delay: 5000 },
-      { text: "This moment is simply about slowing down and being honest with yourself.", phase: 'grounding', delay: 6000 },
+      { text: "Exhale the tension you’ve been carrying.", phase: 'exhale', delay: 6000 },
+      { text: "You do not need to solve everything right now.", phase: 'grounding', delay: 6000 },
+      { text: "This moment is simply about slowing down and being honest with yourself.", phase: 'grounding', delay: 7000 },
       { text: "Breathe in slowly.", phase: 'inhale', delay: 4000 },
-      { text: "And let your shoulders relax as you breathe out.", phase: 'exhale', delay: 5000 },
-      { text: "You are here because part of you still wants change.", phase: 'grounding', delay: 5000 },
-      { text: "That matters.", phase: 'grounding', delay: 3000 },
+      { text: "And let your shoulders relax as you breathe out.", phase: 'exhale', delay: 6000 },
+      { text: "You are here because part of you still wants change.", phase: 'grounding', delay: 6000 },
+      { text: "That matters.", phase: 'grounding', delay: 4000 },
       { text: "Take one final slow breath.", phase: 'inhale', delay: 4000 },
       { text: "When you are ready, continue forward.", phase: 'complete', delay: 4000 }
     ];
@@ -40,6 +57,18 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
       setDisplayText(step.text);
       speechService.speak(step.text);
       await new Promise(resolve => setTimeout(resolve, step.delay));
+    }
+
+    // Fade out music
+    if (audioRef.current) {
+      const fadeInterval = setInterval(() => {
+        if (audioRef.current && audioRef.current.volume > 0.01) {
+          audioRef.current.volume -= 0.01;
+        } else {
+          clearInterval(fadeInterval);
+          if (audioRef.current) audioRef.current.pause();
+        }
+      }, 100);
     }
 
     onComplete();
@@ -71,3 +100,4 @@ export const BreathingExercise: React.FC<BreathingExerciseProps> = ({ onComplete
     </div>
   );
 };
+

@@ -153,3 +153,35 @@ textarea::placeholder {
   animation: scaleIn 0.5s var(--ease-spring) forwards;
 }
 
+/* Global Navigation Buttons */
+.session-exit-btn, .session-back-btn {
+  position: fixed;
+  top: 1.5rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-faint);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: all 0.3s ease;
+  background: none;
+  cursor: pointer;
+}
+
+.session-exit-btn {
+  right: 1.5rem;
+}
+
+.session-back-btn {
+  left: 1.5rem;
+}
+
+.session-exit-btn:hover, .session-back-btn:hover {
+  border-color: var(--border-glow);
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}

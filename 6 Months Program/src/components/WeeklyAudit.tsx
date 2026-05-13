@@ -58,8 +58,17 @@ export const WeeklyAudit: React.FC<WeeklyAuditProps> = ({ appData, onComplete, o
     onComplete(data);
   };
 
+  const prevStep = () => {
+    if (step === 'scores') setStep('intro');
+    else if (step === 'growth') setStep('scores');
+    else if (step === 'reflection') setStep(pastReflection ? 'growth' : 'scores');
+  };
+
   return (
     <div className="audit-container">
+      {step !== 'intro' && (
+        <button className="session-back-btn" onClick={prevStep} title="Back">←</button>
+      )}
       <button className="session-exit-btn" onClick={onExit}>✕</button>
 
       {step === 'intro' && (

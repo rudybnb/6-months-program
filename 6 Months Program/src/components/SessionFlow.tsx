@@ -7,10 +7,8 @@ import { WorkoutSession } from './WorkoutSession';
 import { PreparationChecklist } from './PreparationChecklist';
 import { PastReflectionComparison } from './PastReflectionComparison';
 import { BreathingIntro } from './BreathingIntro';
-import { speechService } from '../services/speech';
 import {
   DEFAULT_AFFIRMATIONS,
-  EVENING_QUOTES,
 } from '../types';
 import type {
   SessionType,
@@ -102,17 +100,7 @@ export const SessionFlow: React.FC<SessionFlowProps> = ({ type, profile, morning
 
   // Evening session state
   const [reflection, setReflection] = useState('');
-  const [isSpeakingQuote, setIsSpeakingQuote] = useState(false);
 
-  useEffect(() => {
-    return () => {
-      speechService.stop();
-    };
-  }, []);
-
-  const eveningQuote = useMemo(() => {
-    return EVENING_QUOTES[Math.floor(Math.random() * EVENING_QUOTES.length)];
-  }, []);
 
   const dailyPrompt = useMemo(() => {
     return getDailyPrompt(todayStr);
@@ -132,6 +120,10 @@ export const SessionFlow: React.FC<SessionFlowProps> = ({ type, profile, morning
 
   const nextStep = useCallback(() => {
     setStepIndex(prev => prev + 1);
+  }, []);
+
+  const prevStep = useCallback(() => {
+    setStepIndex(prev => Math.max(0, prev - 1));
   }, []);
 
   // ─── MORNING STEPS ───
@@ -214,38 +206,6 @@ export const SessionFlow: React.FC<SessionFlowProps> = ({ type, profile, morning
   ], [todayStr, profile, story, dailyPrompt, pastReflection, beliefAnswer, intention, onComplete, nextStep]);
 
   const eveningSteps = useMemo(() => [
-    { id: 'quote', component: (
-      <div className="quote-wrapper fade-up">
-        <div style={{ textAlign: 'center', position: 'relative' }}>
-          <button 
-            className={`quote-audio-btn ${isSpeakingQuote ? 'speaking' : ''}`}
-            onClick={() => {
-              if (isSpeakingQuote) {
-                speechService.stop();
-                setIsSpeakingQuote(false);
-              } else {
-                setIsSpeakingQuote(true);
-                speechService.speak(eveningQuote, () => setIsSpeakingQuote(false));
-              }
-            }}
-          >
-            {isSpeakingQuote ? '🔊' : '🔈'}
-          </button>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', marginBottom: '1.5rem', color: 'var(--text-main)', opacity: 0.5 }}>
-            "
-          </h2>
-          <blockquote style={{ fontSize: '1.5rem', fontStyle: 'italic', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-            {eveningQuote}
-          </blockquote>
-        </div>
-        <button className="step-continue-btn fade-in" onClick={() => {
-          speechService.stop();
-          nextStep();
-        }}>
-          Enter Reflection
-        </button>
-      </div>
-    )},
     { id: 'reflection', component: (
       <TherapyPrompt
         question="How did today feel?"
@@ -278,7 +238,7 @@ export const SessionFlow: React.FC<SessionFlowProps> = ({ type, profile, morning
         }}
       />
     )},
-  ], [todayStr, reflection, onComplete, eveningQuote, isSpeakingQuote, nextStep]);
+  ], [todayStr, reflection, onComplete, nextStep]);
 
   const currentSteps = type === 'morning' ? morningSteps : eveningSteps;
 
@@ -311,8 +271,14 @@ export const SessionFlow: React.FC<SessionFlowProps> = ({ type, profile, morning
         <div className="session-progress-fill" style={{ width: `${progress}%` }} />
       </div>
 
-      {/* Exit button */}
-      <button className="session-exit-btn" onClick={onExit}>
+      {/* Navigation buttons */}
+      {stepIndex > 0 && (
+        <button className="session-back-btn" onClick={prevStep} title="Back">
+          ←
+        </button>
+      )}
+
+      <button className="session-exit-btn" onClick={onExit} title="Exit Session">
         ✕
       </button>
 
