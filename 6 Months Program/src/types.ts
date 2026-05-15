@@ -139,6 +139,28 @@ export interface WeeklyAuditData {
   timestamp: number;
 }
 
+// ─── Community Types ───
+export interface PartnerData {
+  name: string;
+  lastActive: string;
+  completedToday: boolean;
+}
+
+export interface Challenge {
+  id: string;
+  title: string;
+  duration: string;
+  participants: number;
+  type: string;
+}
+
+export interface DiscussionPost {
+  id: string;
+  authorFirstName: string;
+  content: string;
+  timestamp: number;
+}
+
 export interface AppData {
   morningSessions: Record<string, MorningSessionData>;
   eveningSessions: Record<string, EveningSessionData>;

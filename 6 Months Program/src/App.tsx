@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { WeeklyAudit } from './components/WeeklyAudit';
 import { IdentityTimeline } from './components/IdentityTimeline';
+import { CommunityHub } from './components/CommunityHub';
 
 function App() {
   const [appData, setAppData] = useLocalStorage<AppData>('inner-work-data', {
@@ -24,7 +25,7 @@ function App() {
     voiceEnabled: true,
   });
 
-  const [activeSession, setActiveSession] = useState<SessionType | 'weekly-audit' | 'identity-timeline' | null>(null);
+  const [activeSession, setActiveSession] = useState<SessionType | 'weekly-audit' | 'identity-timeline' | 'community' | null>(null);
   const [showCompletion, setShowCompletion] = useState(false);
   
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -41,6 +42,11 @@ function App() {
 
   const handleShowTimeline = () => {
     setActiveSession('identity-timeline');
+    setShowCompletion(false);
+  };
+
+  const handleStartCommunity = () => {
+    setActiveSession('community');
     setShowCompletion(false);
   };
 
@@ -145,6 +151,15 @@ function App() {
       );
     }
 
+    if (activeSession === 'community') {
+      return (
+        <CommunityHub
+          appData={appData}
+          onBack={handleExitSession}
+        />
+      );
+    }
+
     return (
       <SessionFlow
         type={activeSession as SessionType}
@@ -174,6 +189,7 @@ function App() {
         onStartSession={handleStartSession} 
         onStartAudit={handleStartAudit}
         onShowTimeline={handleShowTimeline}
+        onStartCommunity={handleStartCommunity}
         onEditProfile={() => setIsEditingProfile(true)}
         onToggleVoice={handleToggleVoice}
         onReset={handleReset}

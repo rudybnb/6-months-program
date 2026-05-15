@@ -2,12 +2,14 @@ import React from 'react';
 import { User, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import type { AppData } from '../types';
 import { DailyGuidance } from './DailyGuidance';
+import { PartnerStatus } from './PartnerStatus';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
   onStartSession: (type: 'morning' | 'evening') => void;
   onStartAudit: () => void;
   onShowTimeline: () => void;
+  onStartCommunity: () => void;
   onEditProfile: () => void;
   onToggleVoice: () => void;
   onReset: () => void;
@@ -17,7 +19,8 @@ interface HomeScreenProps {
 export const HomeScreen: React.FC<HomeScreenProps> = ({ 
   onStartSession, 
   onStartAudit, 
-  onShowTimeline, 
+  onShowTimeline,
+  onStartCommunity,
   onEditProfile, 
   onToggleVoice,
   onReset,
@@ -79,6 +82,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   else if (hour < 17) greetingMsg = 'Good afternoon';
 
   const firstName = appData.profile?.name?.split(' ')[0] || 'there';
+
+  // Simulated partner data for demonstration
+  const simulatedPartner = {
+    name: 'Alex',
+    lastActive: todayStr,
+    completedToday: true, // You could toggle this to see the pending state
+  };
 
   return (
     <div className="home-container">
@@ -142,10 +152,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           )}
         </div>
 
+        <div className="fade-up" style={{ animationDelay: '0.3s' }}>
+          <PartnerStatus partner={simulatedPartner} />
+        </div>
+
         <div className="home-secondary-grid fade-up" style={{ animationDelay: '0.4s' }}>
           <button className="secondary-card" onClick={onShowTimeline}>
             <span className="card-icon">📈</span>
             <span className="card-label">My Progress</span>
+          </button>
+          <button className="secondary-card" onClick={onStartCommunity}>
+            <span className="card-icon">🤝</span>
+            <span className="card-label">Community</span>
           </button>
           {isSunday && (
             <button className={`secondary-card ${auditDone ? 'done' : ''}`} onClick={onStartAudit}>
