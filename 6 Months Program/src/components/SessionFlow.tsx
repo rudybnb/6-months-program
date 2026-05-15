@@ -282,6 +282,16 @@ export const SessionFlow: React.FC<SessionFlowProps> = ({ type, profile, morning
         ✕
       </button>
 
+      {stepIndex < totalSteps - 1 && (
+        <button 
+          className="session-next-btn" 
+          onClick={nextStep} 
+          title="Next Step"
+        >
+          →
+        </button>
+      )}
+
       {/* Current step */}
       <div className="session-step" key={currentStep?.id || stepIndex}>
         {currentStep?.component || null}

@@ -154,7 +154,7 @@ textarea::placeholder {
 }
 
 /* Global Navigation Buttons */
-.session-exit-btn, .session-back-btn {
+.session-exit-btn, .session-back-btn, .session-next-btn {
   position: fixed;
   top: 1.5rem;
   width: 40px;
@@ -180,7 +180,11 @@ textarea::placeholder {
   left: 1.5rem;
 }
 
-.session-exit-btn:hover, .session-back-btn:hover {
+.session-next-btn {
+  right: 5rem;
+}
+
+.session-exit-btn:hover, .session-back-btn:hover, .session-next-btn:hover {
   border-color: var(--border-glow);
   color: var(--text-main);
   background: rgba(255, 255, 255, 0.05);

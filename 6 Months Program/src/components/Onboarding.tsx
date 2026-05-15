@@ -64,13 +64,20 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel, in
     setStep(prev => Math.max(1, prev - 1) as any);
   };
 
+  const nextStep = () => {
+    setStep(prev => Math.min(4, prev + 1) as any);
+  };
+
   return (
     <div className="onboarding-container">
       {step > 1 && (
         <button className="session-back-btn" onClick={prevStep} title="Back">←</button>
       )}
       {onCancel && (
-        <button className="gate-exit-btn" onClick={onCancel} style={{ zIndex: 10 }}>✕</button>
+        <button className="gate-exit-btn session-exit-btn" onClick={onCancel} style={{ zIndex: 10 }} title="Exit">✕</button>
+      )}
+      {step < 4 && (
+        <button className="session-next-btn" onClick={nextStep} title="Next Step">→</button>
       )}
       <div className="onboarding-content">
         
