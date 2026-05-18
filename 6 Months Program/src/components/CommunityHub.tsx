@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Send } from 'lucide-react';
-import type { Challenge, DiscussionPost, AppData } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Send, Plus, Hash } from 'lucide-react';
+import type { AppData } from '../types';
 import './CommunityHub.css';
 
 interface CommunityHubProps {
@@ -8,152 +8,193 @@ interface CommunityHubProps {
   onBack: () => void;
 }
 
-export const CommunityHub: React.FC<CommunityHubProps> = ({ appData, onBack }) => {
-  const [activeTab, setActiveTab] = useState<'challenges' | 'discussions'>('challenges');
-  const [newPost, setNewPost] = useState('');
+type DiscussionSection = {
+  id: string;
+  name: string;
+};
 
+type ChatMessage = {
+  id: string;
+  sectionId: string;
+  author: string;
+  content: string;
+  timestamp: number;
+};
+
+export const CommunityHub: React.FC<CommunityHubProps> = ({ appData, onBack }) => {
   const firstName = appData.profile?.name?.split(' ')[0] || 'User';
 
-  // Simulated data
-  const [challenges, setChallenges] = useState<Challenge[]>([
-    { id: '1', title: '7-Day 5AM Wake Up', duration: '7 Days', participants: 42, type: 'routine' },
-    { id: '2', title: 'No Sugar Week', duration: '7 Days', participants: 18, type: 'health' },
-    { id: '3', title: '3-Day Water Fast', duration: '3 Days', participants: 5, type: 'health' },
-    { id: '4', title: 'Daily Reading', duration: '30 Days', participants: 112, type: 'mind' }
+  const [sections, setSections] = useState<DiscussionSection[]>([
+    { id: '1', name: 'general' },
+    { id: '2', name: 'wins-and-losses' },
+    { id: '3', name: 'morning-routine' }
   ]);
 
-  const [discussions, setDiscussions] = useState<DiscussionPost[]>([
-    { id: '1', authorFirstName: 'Sarah', content: 'Felt a lot of resistance this morning, but showed up anyway. The discipline matters more than the feeling.', timestamp: Date.now() - 3600000 },
-    { id: '2', authorFirstName: 'David', content: 'Does anyone have tips for winding down in the evening? I struggle to turn my mind off.', timestamp: Date.now() - 7200000 },
-    { id: '3', authorFirstName: 'Michael', content: 'Just finished my first week. Keep going everyone. The clarity is worth it.', timestamp: Date.now() - 86400000 }
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { id: '1', sectionId: '1', author: 'Sarah', content: 'Felt a lot of resistance this morning, but showed up anyway.', timestamp: Date.now() - 3600000 },
+    { id: '2', sectionId: '3', author: 'David', content: 'Does anyone have tips for winding down in the evening?', timestamp: Date.now() - 7200000 },
+    { id: '3', sectionId: '1', author: 'Michael', content: 'Just finished my first week. Keep going everyone.', timestamp: Date.now() - 86400000 }
   ]);
 
-  const [joinedChallenges, setJoinedChallenges] = useState<string[]>([]);
+  const [activeSectionId, setActiveSectionId] = useState<string>('1');
+  const [newSectionName, setNewSectionName] = useState('');
+  const [isCreatingSection, setIsCreatingSection] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
 
-  const handleJoinChallenge = (id: string) => {
-    if (joinedChallenges.includes(id)) {
-      setJoinedChallenges(prev => prev.filter(c => c !== id));
-      setChallenges(prev => prev.map(c => c.id === id ? { ...c, participants: c.participants - 1 } : c));
-    } else {
-      setJoinedChallenges(prev => [...prev, id]);
-      setChallenges(prev => prev.map(c => c.id === id ? { ...c, participants: c.participants + 1 } : c));
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, activeSectionId]);
+
+  const handleCreateSection = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSectionName.trim()) return;
+
+    const formattedName = newSectionName.trim().toLowerCase().replace(/\s+/g, '-');
+    
+    // Prevent duplicates
+    if (sections.find(s => s.name === formattedName)) {
+      setNewSectionName('');
+      setIsCreatingSection(false);
+      return;
     }
+
+    const newSection: DiscussionSection = {
+      id: Date.now().toString(),
+      name: formattedName
+    };
+
+    setSections(prev => [...prev, newSection]);
+    setActiveSectionId(newSection.id);
+    setNewSectionName('');
+    setIsCreatingSection(false);
   };
 
-  const handlePostDiscussion = () => {
-    if (!newPost.trim()) return;
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
 
-    const post: DiscussionPost = {
+    const post: ChatMessage = {
       id: Date.now().toString(),
-      authorFirstName: firstName,
-      content: newPost.trim(),
+      sectionId: activeSectionId,
+      author: firstName,
+      content: newMessage.trim(),
       timestamp: Date.now()
     };
 
-    setDiscussions(prev => [post, ...prev]);
-    setNewPost('');
+    setMessages(prev => [...prev, post]);
+    setNewMessage('');
   };
 
-  const renderChallenges = () => (
-    <div className="hub-challenges fade-in">
-      <p className="hub-description">
-        Action-based commitments. Small groups. Simple tracking.
-      </p>
-      <div className="challenges-grid">
-        {challenges.map(challenge => {
-          const isJoined = joinedChallenges.includes(challenge.id);
-          return (
-            <div key={challenge.id} className={`challenge-card ${isJoined ? 'joined' : ''}`}>
-              <div className="challenge-header">
-                <span className="challenge-duration">{challenge.duration}</span>
-                <span className="challenge-participants">{challenge.participants} participating</span>
-              </div>
-              <h3 className="challenge-title">{challenge.title}</h3>
-              <button 
-                className={`challenge-join-btn ${isJoined ? 'active' : ''}`}
-                onClick={() => handleJoinChallenge(challenge.id)}
-              >
-                {isJoined ? 'Committed' : 'Join Challenge'}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+  const activeMessages = messages.filter(m => m.sectionId === activeSectionId);
+  const activeSection = sections.find(s => s.id === activeSectionId);
 
-  const renderDiscussions = () => (
-    <div className="hub-discussions fade-in">
-      <p className="hub-description">
-        Share experiences and encourage others. No likes, no followers. Just calm, human connection.
-      </p>
-      
-      <div className="discussion-compose">
-        <textarea 
-          placeholder="Share a thought or ask a question..."
-          value={newPost}
-          onChange={(e) => setNewPost(e.target.value)}
-          maxLength={280}
-        />
-        <div className="compose-actions">
-          <span className="char-count">{280 - newPost.length} chars left</span>
-          <button 
-            className="post-btn" 
-            onClick={handlePostDiscussion}
-            disabled={!newPost.trim()}
-          >
-            <Send size={16} />
-            Post
+  return (
+    <div className="chat-layout">
+      {/* Sidebar */}
+      <div className="chat-sidebar">
+        <div className="sidebar-header">
+          <button className="back-button" onClick={onBack}>
+            <ArrowLeft size={20} />
           </button>
+        </div>
+
+        <div className="sections-list">
+          {sections.map(section => (
+            <button
+              key={section.id}
+              className={`section-item ${activeSectionId === section.id ? 'active' : ''}`}
+              onClick={() => setActiveSectionId(section.id)}
+            >
+              <Hash size={16} className="section-icon" />
+              {section.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="create-section-container">
+          {isCreatingSection ? (
+            <form onSubmit={handleCreateSection} className="create-section-form">
+              <Hash size={16} className="section-icon" />
+              <input
+                type="text"
+                autoFocus
+                placeholder="new-section"
+                value={newSectionName}
+                onChange={(e) => setNewSectionName(e.target.value)}
+                onBlur={() => {
+                  if (!newSectionName.trim()) setIsCreatingSection(false);
+                }}
+              />
+            </form>
+          ) : (
+            <button 
+              className="create-section-btn"
+              onClick={() => setIsCreatingSection(true)}
+            >
+              <Plus size={16} />
+              Add Section
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="discussion-feed">
-        {discussions.map(post => {
-          const date = new Date(post.timestamp);
-          const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const dateString = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-          
-          return (
-            <div key={post.id} className="discussion-post">
-              <div className="post-header">
-                <span className="post-author">{post.authorFirstName}</span>
-                <span className="post-time">{dateString} • {timeString}</span>
-              </div>
-              <p className="post-content">{post.content}</p>
+      {/* Main Chat Area */}
+      <div className="chat-main">
+        <div className="chat-header">
+          <Hash size={20} className="chat-header-icon" />
+          <span className="chat-header-title">{activeSection?.name}</span>
+        </div>
+
+        <div className="chat-messages">
+          {activeMessages.length === 0 ? (
+            <div className="empty-chat">
+              <p>No messages yet. Start the conversation.</p>
             </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+          ) : (
+            activeMessages.map((msg, index) => {
+              const date = new Date(msg.timestamp);
+              const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              
+              // Simple check if previous message was from the same author to group them
+              const showHeader = index === 0 || activeMessages[index - 1].author !== msg.author;
 
-  return (
-    <div className="community-hub-container">
-      <div className="hub-header">
-        <button className="back-button" onClick={onBack}>
-          <ArrowLeft size={24} />
-        </button>
-        <h1>Community Hub</h1>
-      </div>
+              return (
+                <div key={msg.id} className={`chat-message ${showHeader ? 'mt-4' : 'mt-1'}`}>
+                  {showHeader && (
+                    <div className="message-header">
+                      <span className="message-author">{msg.author}</span>
+                      <span className="message-time">{timeString}</span>
+                    </div>
+                  )}
+                  <div className="message-content">
+                    {msg.content}
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={messagesEndRef} />
+        </div>
 
-      <div className="hub-tabs">
-        <button 
-          className={`hub-tab ${activeTab === 'challenges' ? 'active' : ''}`}
-          onClick={() => setActiveTab('challenges')}
-        >
-          Challenges
-        </button>
-        <button 
-          className={`hub-tab ${activeTab === 'discussions' ? 'active' : ''}`}
-          onClick={() => setActiveTab('discussions')}
-        >
-          Discussions
-        </button>
-      </div>
-
-      <div className="hub-content">
-        {activeTab === 'challenges' ? renderChallenges() : renderDiscussions()}
+        <form onSubmit={handleSendMessage} className="chat-input-area">
+          <div className="chat-input-wrapper">
+            <input
+              type="text"
+              placeholder={`Message #${activeSection?.name}`}
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+            />
+            <button 
+              type="submit" 
+              className="send-btn"
+              disabled={!newMessage.trim()}
+            >
+              <Send size={18} />
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
