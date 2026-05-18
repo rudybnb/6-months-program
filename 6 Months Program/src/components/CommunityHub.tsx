@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Send, MessageSquarePlus, MessageCircle } from 'lucide-react';
 import type { AppData } from '../types';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import './CommunityHub.css';
 
 interface CommunityHubProps {
@@ -26,15 +27,15 @@ type ChatMessage = {
 export const CommunityHub: React.FC<CommunityHubProps> = ({ appData, onBack }) => {
   const firstName = appData.profile?.name?.split(' ')[0] || 'User';
 
-  const [subjects, setSubjects] = useState<Subject[]>([
-    { id: '1', title: 'How do you handle morning resistance?', author: 'Sarah', timestamp: Date.now() - 86400000 },
-    { id: '2', title: 'Tips for winding down in the evening', author: 'David', timestamp: Date.now() - 172800000 },
+  const [subjects, setSubjects] = useLocalStorage<Subject[]>('community-subjects', [
+    { id: '1', title: 'How do you handle morning resistance?', author: 'Sarah', timestamp: Date.now() - 3600000 },
+    { id: '2', title: 'Tips for winding down in the evening', author: 'David', timestamp: Date.now() - 7200000 },
   ]);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: '1', subjectId: '1', author: 'Sarah', content: 'Felt a lot of resistance this morning, but showed up anyway. What do you all do when you just do not want to get out of bed?', timestamp: Date.now() - 86400000 },
-    { id: '2', subjectId: '1', author: 'Michael', content: 'I put my phone across the room so I have to stand up.', timestamp: Date.now() - 82000000 },
-    { id: '3', subjectId: '2', author: 'David', content: 'Does anyone have tips for winding down in the evening? I struggle to turn my mind off.', timestamp: Date.now() - 172800000 }
+  const [messages, setMessages] = useLocalStorage<ChatMessage[]>('community-messages', [
+    { id: '1', subjectId: '1', author: 'Sarah', content: 'Felt a lot of resistance this morning, but showed up anyway. What do you all do when you just do not want to get out of bed?', timestamp: Date.now() - 3600000 },
+    { id: '2', subjectId: '1', author: 'Michael', content: 'I put my phone across the room so I have to stand up.', timestamp: Date.now() - 3000000 },
+    { id: '3', subjectId: '2', author: 'David', content: 'Does anyone have tips for winding down in the evening? I struggle to turn my mind off.', timestamp: Date.now() - 7200000 }
   ]);
 
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
@@ -42,6 +43,24 @@ export const CommunityHub: React.FC<CommunityHubProps> = ({ appData, onBack }) =
   const [newMessage, setNewMessage] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Clear messages at midnight
+  useEffect(() => {
+    const clearOldMessages = () => {
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      const midnightTimestamp = midnight.getTime();
+      
+      setMessages(prev => {
+        const valid = prev.filter(m => m.timestamp >= midnightTimestamp);
+        return valid.length === prev.length ? prev : valid;
+      });
+    };
+
+    clearOldMessages();
+    const interval = setInterval(clearOldMessages, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [setMessages]);
 
   useEffect(() => {
     if (activeSubjectId) {
