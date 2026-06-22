@@ -2264,6 +2264,36 @@ export function renderFundingTracker(container) {
 }
 
 // --- HELPERS FOR AGENTS DASHBOARD ---
+// --- MODULE-LEVEL PERSISTENT STATE FOR AGENTS CONTROL ROOM ---
+let crActiveTab = 'overview';
+let crWizardStep = 1;
+let crWizardInputs = {
+  clientId: '',
+  campaignName: '',
+  agentId: '',
+  outputType: '',
+  evidenceId: '',
+  dueDate: '',
+  approvalPerson: '',
+  platform: 'Facebook',
+  tone: 'Grassroots, Encouraging'
+};
+let crEvidenceFilter = 'All';
+let crSelectedSettingAgentId = 'storytelling';
+let crExpandedOutputs = {};
+
+const triggerDownload = (content, filename, type) => {
+  const blob = new Blob([content], { type: type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
 function getFileIcon(type) {
   if (type === 'PDF') return '📄';
   if (type === 'Excel' || type === 'CSV') return '📊';
@@ -2930,6 +2960,1273 @@ function openEditBriefModal(clientId) {
   });
 }
 
+function getAgentChecklist(agentId, client, clientEvidence) {
+  let checklist = [];
+  if (agentId === 'storytelling') {
+    checklist = [
+      { name: 'Campaign brief completed', met: !!client.campaignName && !!client.campaignGoal },
+      { name: 'Reports / Research available', met: !!client.evidenceReports || !!client.evidenceResearch },
+      { name: 'Project evidence attached', met: !!client.evidenceNotes || !!client.evidenceRegisters || clientEvidence.length > 0 },
+      { name: 'Target audience selected', met: !!client.targetReach },
+      { name: 'Tone of voice selected', met: !!client.toneOfVoice },
+      { name: 'Key message completed', met: !!client.campaignMessage },
+      { name: 'Photos / evidence available', met: !!client.evidencePhotos || !!client.evidenceVideos }
+    ];
+  } else if (agentId === 'socialmedia') {
+    checklist = [
+      { name: 'Client profile completed', met: !!client.name && !!client.website },
+      { name: 'Campaign brief completed', met: !!client.campaignGoal },
+      { name: 'Target audience selected', met: !!client.targetReach },
+      { name: 'Brand voice selected', met: !!client.toneOfVoice },
+      { name: 'Platform selected', met: !!client.contentPlatforms || !!client.campaignPlatforms },
+      { name: 'Source evidence attached', met: clientEvidence.length > 0 },
+      { name: 'Approval person selected', met: !!client.primaryContact }
+    ];
+  } else if (agentId === 'canva-brief') {
+    checklist = [
+      { name: 'Campaign title completed', met: !!client.campaignName },
+      { name: 'Poster message complete', met: !!client.campaignMessage },
+      { name: 'Target platform selected', met: !!client.contentPlatforms },
+      { name: 'Logo uploaded', met: !!client.logo },
+      { name: 'Brand colours configured', met: !!client.brandColours },
+      { name: 'Image assets defined', met: !!client.evidencePhotos },
+      { name: 'Poster size defined', met: !!client.posterSizes },
+      { name: 'Main CTA defined', met: !!client.campaignCta },
+      { name: 'Contact details verified', met: !!client.email || !!client.phone }
+    ];
+  } else if (agentId === 'calendar') {
+    checklist = [
+      { name: 'Campaign dates ready', met: !!client.campaignStart && !!client.campaignEnd },
+      { name: 'Posting frequency configured', met: !!client.campaignFrequency },
+      { name: 'Platforms selected', met: !!client.contentPlatforms },
+      { name: 'Campaign priorities active', met: !!client.campaignPriority },
+      { name: 'Donor deadlines tagged', met: !!client.reportingDeadlines }
+    ];
+  } else if (agentId === 'reporting') {
+    checklist = [
+      { name: 'Project data / Impact ready', met: !!client.requiredImpactMetrics },
+      { name: 'Photos / Media ready', met: !!client.evidencePhotos },
+      { name: 'Attendance records ready', met: !!client.evidenceRegisters },
+      { name: 'Survey results configured', met: !!client.evidenceSurveys || clientEvidence.some(ev => ev.contentType === 'Survey results') },
+      { name: 'Donor requirements defined', met: !!client.requiredDonorOutputs },
+      { name: 'Reporting period active', met: !!client.reportingDeadlines }
+    ];
+  } else if (agentId === 'analytics') {
+    checklist = [
+      { name: 'Social metrics available', met: true },
+      { name: 'Reach & engagement track', met: true },
+      { name: 'Website clicks log', met: true },
+      { name: 'Top-performing posts list', met: true }
+    ];
+  } else if (agentId === 'funding-comm') {
+    checklist = [
+      { name: 'Funder details verified', met: !!client.currentFunders },
+      { name: 'Project results compiled', met: !!client.requiredImpactMetrics },
+      { name: 'Impact stories generated', met: true },
+      { name: 'Evidence documents linked', met: clientEvidence.length > 0 },
+      { name: 'Funding goals clear', met: !!client.campaignGoal },
+      { name: 'Grant requirements defined', met: !!client.grantNames }
+    ];
+  }
+  return checklist;
+}
+
+function renderActiveTabContent(client, briefStatus, clientEvidence, clientOutputs) {
+  if (crActiveTab === 'overview') {
+    return renderOverviewTabContent(client, briefStatus, clientEvidence, clientOutputs);
+  } else if (crActiveTab === 'create-work') {
+    return renderCreateWorkTabContent(client, briefStatus, clientEvidence);
+  } else if (crActiveTab === 'evidence') {
+    return renderEvidenceTabContent(client, clientEvidence);
+  } else if (crActiveTab === 'approvals') {
+    return renderApprovalsTabContent(client, clientOutputs);
+  } else if (crActiveTab === 'reports') {
+    return renderReportsTabContent(client);
+  } else if (crActiveTab === 'settings') {
+    return renderSettingsTabContent();
+  }
+  return '';
+}
+
+function renderOverviewTabContent(client, briefStatus, clientEvidence, clientOutputs) {
+  // 1. Tasks due today
+  const clientTasks = state.tasks.filter(t => t.client === client.id);
+  const tasksHtml = clientTasks.length === 0 
+    ? `<div class="empty-state-text" style="color:var(--text-muted); font-size:0.8rem; font-style:italic; padding:1rem 0;">No priorities due today. You are all caught up!</div>`
+    : `<ul class="today-tasks-list" style="list-style:none; padding:0; margin:0.5rem 0 0 0; display:flex; flex-direction:column; gap:0.5rem;">
+        ${clientTasks.map(t => `
+          <li class="today-task-item ${t.status === 'Completed' ? 'completed' : ''}" style="display:flex; align-items:center; gap:0.5rem; background:#f8fafc; padding:0.5rem; border-radius:6px; border:1px solid #f1f5f9; font-size:0.8rem;">
+            <input type="checkbox" class="task-checkbox" data-task-id="${t.id}" ${t.status === 'Completed' ? 'checked' : ''} style="cursor:pointer;" />
+            <span class="task-name" style="flex-grow:1; text-decoration: ${t.status === 'Completed' ? 'line-through' : 'none'}; color: ${t.status === 'Completed' ? 'var(--text-muted)' : 'inherit'};">${t.name}</span>
+            <span class="badge ${t.priority === 'High' ? 'danger' : 'info'}" style="font-size:0.65rem; padding:0.15rem 0.35rem;">${t.priority}</span>
+          </li>
+        `).join('')}
+       </ul>`;
+
+  // 2. Drafts waiting for review
+  const drafts = clientOutputs.filter(o => o.approvalStatus === 'Draft' || o.approvalStatus === 'Internal Review');
+  const draftsHtml = drafts.length === 0
+    ? `<div class="empty-state-text" style="color:var(--text-muted); font-size:0.8rem; font-style:italic; padding:1rem 0;">No drafts waiting for review.</div>`
+    : `<div class="overview-list" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem;">
+        ${drafts.map(d => `
+          <div class="overview-list-item" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:0.5rem; border-radius:6px; border:1px solid #f1f5f9; font-size:0.8rem;">
+            <div>
+              <strong>${getAgentNameById(d.agentId)}</strong>
+              <span class="text-muted" style="font-size:0.75rem;"> - ${d.outputType}</span>
+            </div>
+            <button class="btn btn-xs btn-outline overview-go-approvals" data-tab="approvals" style="padding:0.15rem 0.4rem; font-size:0.65rem;">Review</button>
+          </div>
+        `).join('')}
+       </div>`;
+
+  // 3. Content waiting for client approval
+  const clientAwaiting = clientOutputs.filter(o => o.approvalStatus === 'Sent to Client');
+  const awaitingHtml = clientAwaiting.length === 0
+    ? `<div class="empty-state-text" style="color:var(--text-muted); font-size:0.8rem; font-style:italic; padding:1rem 0;">No content waiting for client approval.</div>`
+    : `<div class="overview-list" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem;">
+        ${clientAwaiting.map(d => `
+          <div class="overview-list-item" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:0.5rem; border-radius:6px; border:1px solid #f1f5f9; font-size:0.8rem;">
+            <div>
+              <strong>${getAgentNameById(d.agentId)}</strong>
+              <span class="text-muted" style="font-size:0.75rem;"> - ${d.outputType}</span>
+            </div>
+            <button class="btn btn-xs btn-outline overview-go-approvals" data-tab="approvals" style="padding:0.15rem 0.4rem; font-size:0.65rem;">View</button>
+          </div>
+        `).join('')}
+       </div>`;
+
+  // 4. Reports due
+  const reports = state.reports.filter(r => r.client === client.id && r.status !== 'Submitted');
+  const reportsHtml = reports.length === 0
+    ? `<div class="empty-state-text" style="color:var(--text-muted); font-size:0.8rem; font-style:italic; padding:1rem 0;">No reports due this period.</div>`
+    : `<div class="clean-table-container" style="margin-top:0.5rem; border-radius:6px;">
+        <table class="clean-table" style="font-size:0.75rem; width:100%;">
+          <thead>
+            <tr>
+              <th style="padding:0.4rem 0.6rem; font-size:0.7rem;">Report</th>
+              <th style="padding:0.4rem 0.6rem; font-size:0.7rem;">Donor</th>
+              <th style="padding:0.4rem 0.6rem; font-size:0.7rem;">Due Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reports.map(r => `
+              <tr>
+                <td style="padding:0.4rem 0.6rem;"><strong>${r.name}</strong></td>
+                <td style="padding:0.4rem 0.6rem;">${r.donor}</td>
+                <td style="padding:0.4rem 0.6rem;"><span style="color:var(--danger-color); font-weight:600;">${r.dueDate}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+       </div>`;
+
+  // 5. Missing client info checklist
+  let missingFieldsHtml = '';
+  if (briefStatus.score === 100) {
+    missingFieldsHtml = `<div class="ready-alert" style="background:#ecfdf5; border:1px solid #6ee7b7; padding:0.75rem; border-radius:6px; color:#047857; font-size:0.8rem; font-weight:500; margin-top:0.5rem;">🎉 Client profile is 100% complete! Agents have maximum contextual accuracy.</div>`;
+  } else {
+    missingFieldsHtml = `
+      <div class="missing-info-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.5rem;">
+        ${Object.keys(briefStatus.missing).map(sec => {
+          const missingFields = briefStatus.missing[sec];
+          if (missingFields.length === 0) return '';
+          const sectionTitles = {
+            ngoProfile: 'Profile',
+            brandIdentity: 'Brand',
+            targetAudience: 'Audience',
+            campaignInfo: 'Campaign',
+            projectEvidence: 'Evidence',
+            donorInfo: 'Funder',
+            contentRequirements: 'Needs'
+          };
+          return `
+            <div class="missing-info-section" style="background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:0.5rem; font-size:0.75rem;">
+              <h4 style="margin:0 0 0.25rem 0; font-weight:600; font-size:0.75rem; color:#b45309;">${sectionTitles[sec] || sec}</h4>
+              <ul class="missing-fields-list" style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.15rem; color:#78350f;">
+                ${missingFields.slice(0, 2).map(f => `<li style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">• ${f}</li>`).join('')}
+                ${missingFields.length > 2 ? `<li style="font-weight:600; font-size:0.65rem;">+${missingFields.length - 2} more</li>` : ''}
+              </ul>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div style="margin-top:0.75rem; display:flex; justify-content:flex-end;">
+        <button class="btn btn-xs btn-primary" id="overviewEditBrief">Complete Profile</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="overview-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem;">
+      <!-- Left Column -->
+      <div class="overview-col" style="display:flex; flex-direction:column; gap:1.5rem;">
+        <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+          <h3 class="card-title" style="margin:0 0 0.25rem 0; font-size:1.05rem; font-weight:600;">📅 Today's Priorities</h3>
+          <p class="card-subtitle" style="margin:0; font-size:0.75rem; color:var(--text-muted);">Quick checklist of tactical tasks needing attention today.</p>
+          ${tasksHtml}
+        </div>
+        <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+          <h3 class="card-title" style="margin:0 0 0.25rem 0; font-size:1.05rem; font-weight:600;">📋 Reports & Deliverables Due</h3>
+          <p class="card-subtitle" style="margin:0; font-size:0.75rem; color:var(--text-muted);">Key reporting milestones required by donors.</p>
+          ${reportsHtml}
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="overview-col" style="display:flex; flex-direction:column; gap:1.5rem;">
+        <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+          <h3 class="card-title" style="margin:0 0 0.25rem 0; font-size:1.05rem; font-weight:600;">⚡ Drafts Waiting Review</h3>
+          <p class="card-subtitle" style="margin:0; font-size:0.75rem; color:var(--text-muted);">AI-generated items requiring internal oversight.</p>
+          ${draftsHtml}
+        </div>
+        <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+          <h3 class="card-title" style="margin:0 0 0.25rem 0; font-size:1.05rem; font-weight:600;">📤 Sent for Client Approval</h3>
+          <p class="card-subtitle" style="margin:0; font-size:0.75rem; color:var(--text-muted);">Items currently in the client approval pipeline.</p>
+          ${awaitingHtml}
+        </div>
+        <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+          <h3 class="card-title" style="margin:0 0 0.25rem 0; font-size:1.05rem; font-weight:600;">⚠️ Context Completeness Alerts</h3>
+          <p class="card-subtitle" style="margin:0; font-size:0.75rem; color:var(--text-muted);">Missing profile variables that limit agent effectiveness.</p>
+          ${missingFieldsHtml}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCreateWorkTabContent(client, briefStatus, clientEvidence) {
+  // Wizard Steps Header
+  const stepsHeader = `
+    <div class="wizard-steps-header mb-4">
+      <div class="wizard-step-bubble ${crWizardStep >= 1 ? 'active' : ''} ${crWizardStep > 1 ? 'completed' : ''}" data-step="1">
+        <span class="step-num">${crWizardStep > 1 ? '✓' : '1'}</span>
+        <span class="step-label">Client</span>
+      </div>
+      <div class="wizard-step-line ${crWizardStep > 1 ? 'completed' : ''}"></div>
+      <div class="wizard-step-bubble ${crWizardStep >= 2 ? 'active' : ''} ${crWizardStep > 2 ? 'completed' : ''}" data-step="2">
+        <span class="step-num">${crWizardStep > 2 ? '✓' : '2'}</span>
+        <span class="step-label">Campaign</span>
+      </div>
+      <div class="wizard-step-line ${crWizardStep > 2 ? 'completed' : ''}"></div>
+      <div class="wizard-step-bubble ${crWizardStep >= 3 ? 'active' : ''} ${crWizardStep > 3 ? 'completed' : ''}" data-step="3">
+        <span class="step-num">${crWizardStep > 3 ? '✓' : '3'}</span>
+        <span class="step-label">Agent</span>
+      </div>
+      <div class="wizard-step-line ${crWizardStep > 3 ? 'completed' : ''}"></div>
+      <div class="wizard-step-bubble ${crWizardStep >= 4 ? 'active' : ''} ${crWizardStep > 4 ? 'completed' : ''}" data-step="4">
+        <span class="step-num">${crWizardStep > 4 ? '✓' : '4'}</span>
+        <span class="step-label">Format</span>
+      </div>
+      <div class="wizard-step-line ${crWizardStep > 4 ? 'completed' : ''}"></div>
+      <div class="wizard-step-bubble ${crWizardStep >= 5 ? 'active' : ''} ${crWizardStep > 5 ? 'completed' : ''}" data-step="5">
+        <span class="step-num">${crWizardStep > 5 ? '✓' : '5'}</span>
+        <span class="step-label">Evidence</span>
+      </div>
+      <div class="wizard-step-line ${crWizardStep > 5 ? 'completed' : ''}"></div>
+      <div class="wizard-step-bubble ${crWizardStep >= 6 ? 'active' : ''} ${crWizardStep > 6 ? 'completed' : ''}" data-step="6">
+        <span class="step-num">6</span>
+        <span class="step-label">Generate</span>
+      </div>
+    </div>
+  `;
+
+  let stepBody = '';
+  
+  if (crWizardStep === 1) {
+    stepBody = `
+      <div class="wizard-step-panel">
+        <h3>Step 1: Select Client Workspace</h3>
+        <p class="step-desc">Specify which NGO client profile context the AI Agent should load.</p>
+        <div class="form-group mt-2">
+          <label>Active Client</label>
+          <select id="wzClientSelect" class="form-select">
+            ${state.clients.map(c => `
+              <option value="${c.id}" ${c.id === crWizardInputs.clientId ? 'selected' : ''}>
+                ${c.logo} ${c.name}
+              </option>
+            `).join('')}
+          </select>
+        </div>
+      </div>
+    `;
+  } else if (crWizardStep === 2) {
+    stepBody = `
+      <div class="wizard-step-panel">
+        <h3>Step 2: Select Target Campaign</h3>
+        <p class="step-desc">Focus the AI on a specific pre-defined strategy or reporting goal.</p>
+        <div class="form-group mt-2">
+          <label>Target Campaign</label>
+          <select id="wzCampaignSelect" class="form-select">
+            ${state.campaigns.filter(c => c.client === crWizardInputs.clientId).map(c => `
+              <option value="${c.name}" ${c.name === crWizardInputs.campaignName ? 'selected' : ''}>${c.name}</option>
+            `).join('') || `<option value="${client.campaignName || 'General'}">${client.campaignName || 'General'}</option>`}
+          </select>
+        </div>
+      </div>
+    `;
+  } else if (crWizardStep === 3) {
+    const selectedAgentId = crWizardInputs.agentId;
+    let agentDetailsHtml = '';
+    
+    if (selectedAgentId) {
+      const checklist = getAgentChecklist(selectedAgentId, client, clientEvidence);
+      const isReady = checklist.every(c => c.met);
+      
+      agentDetailsHtml = `
+        <div class="selected-agent-details-box mt-4 p-4 border rounded" style="background:#f8fafc; border-color:#e2e8f0;">
+          <h4 style="margin-top: 0; font-weight:600; display:flex; align-items:center; gap:0.4rem; font-size:0.9rem;">
+            🤖 ${getAgentNameById(selectedAgentId)} Configured
+          </h4>
+          <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:1rem; line-height:1.4;">
+            ${state.agents.find(a => a.id === selectedAgentId).purpose}
+          </p>
+
+          <div class="agent-checklist-box" style="background:white; border:1px solid #e2e8f0; border-radius:8px; padding:0.75rem;">
+            <div class="agent-checklist-title" style="font-weight:600; font-size:0.8rem; margin-bottom:0.5rem; color:var(--text-color);">Agent Readiness Checklist:</div>
+            <ul class="agent-checklist" style="list-style:none; padding:0; margin:0; font-size:0.75rem; display:grid; grid-template-columns:1fr 1fr; gap:0.4rem;">
+              ${checklist.map(c => `
+                <li class="${c.met ? 'checked' : 'missing'}" style="display:flex; align-items:center; gap:0.3rem;">
+                  ${c.met ? '✅' : '❌'} ${c.name}
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+
+          ${!isReady ? `
+            <div class="agent-placeholder-alert warning mt-3" style="background:#fef2f2; border:1px solid #fca5a5; padding:0.75rem; border-radius:6px; color:#b91c1c; font-size:0.75rem; line-height:1.4;">
+              <strong>⚠️ This agent is missing critical client data.</strong> Please complete the client brief profile to unlock final AI generation capabilities.
+              <div style="margin-top:0.5rem;">
+                <button class="btn btn-xs btn-primary" id="wzCompleteBriefBtn" style="background:#b91c1c; border-color:#b91c1c;">✏️ Complete Brief</button>
+              </div>
+            </div>
+          ` : `
+            <div class="agent-placeholder-alert success mt-3" style="background:#ecfdf5; border:1px solid #6ee7b7; padding:0.75rem; border-radius:6px; color:#047857; font-size:0.75rem; font-weight:500;">
+              🎉 Agent is 100% ready! All client profile parameters have been fully provided.
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    stepBody = `
+      <div class="wizard-step-panel">
+        <h3>Step 3: Assign AI Agent Co-worker</h3>
+        <p class="step-desc">Select the specialist agent to construct this piece of work.</p>
+        
+        <div class="agents-tiles-grid mt-3" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
+          ${state.agents.map(a => {
+            const isSelected = a.id === selectedAgentId;
+            return `
+              <button class="agent-tile-btn ${isSelected ? 'selected' : ''}" data-agent-id="${a.id}" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0.75rem; border:1px solid var(--border-color); border-radius:8px; background:${isSelected ? '#eff6ff' : 'white'}; border-color:${isSelected ? 'var(--primary-color)' : 'var(--border-color)'}; cursor:pointer; outline:none; transition:all 0.2s;">
+                <div class="agent-tile-emoji" style="font-size:1.25rem; margin-bottom:0.25rem;">🤖</div>
+                <div class="agent-tile-name" style="font-size:0.75rem; font-weight:600; text-align:center; color:${isSelected ? 'var(--primary-color)' : 'inherit'};">${a.name}</div>
+              </button>
+            `;
+          }).join('')}
+        </div>
+
+        ${agentDetailsHtml}
+      </div>
+    `;
+  } else if (crWizardStep === 4) {
+    const listOutputs = getAgentOutputsList(crWizardInputs.agentId).split(', ');
+    
+    stepBody = `
+      <div class="wizard-step-panel">
+        <h3>Step 4: Select Output Format</h3>
+        <p class="step-desc">Choose the format details that align with this output category.</p>
+        <div class="form-group mt-2">
+          <label>Output Format</label>
+          <select id="wzOutputTypeSelect" class="form-select">
+            <option value="">-- Choose output format --</option>
+            ${listOutputs.map(o => `
+              <option value="${o}" ${o === crWizardInputs.outputType ? 'selected' : ''}>${o}</option>
+            `).join('')}
+          </select>
+        </div>
+      </div>
+    `;
+  } else if (crWizardStep === 5) {
+    stepBody = `
+      <div class="wizard-step-panel">
+        <h3>Step 5: Attach Factual Evidence</h3>
+        <p class="step-desc">Select verified logs or report documents to serve as the ground-truth facts for the AI Agent.</p>
+        <div class="form-group mt-2">
+          <label>Source Document (Evidence Inbox)</label>
+          <select id="wzEvidenceSelect" class="form-select">
+            <option value="">-- Choose factual source document --</option>
+            ${clientEvidence.map(e => `
+              <option value="${e.id}" ${e.id === crWizardInputs.evidenceId ? 'selected' : ''}>
+                ${e.name} (${e.verificationStatus})
+              </option>
+            `).join('')}
+          </select>
+        </div>
+        ${clientEvidence.length === 0 ? `
+          <div class="agent-placeholder-alert warning mt-3" style="background:#fffbeb; border:1px solid #fcd34d; padding:0.75rem; border-radius:6px; color:#b45309; font-size:0.75rem; line-height:1.4;">
+            No evidence files have been connected for this client. Please upload/connect source evidence in the Evidence tab, or simulate a quick upload here.
+            <div style="margin-top: 0.5rem;">
+              <button class="btn btn-xs btn-primary" id="wzQuickUploadBtn">📥 Simulate Quick Upload</button>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } else if (crWizardStep === 6) {
+    const ev = clientEvidence.find(e => e.id === crWizardInputs.evidenceId);
+    const isUnverified = ev && ev.verificationStatus === 'Unverified';
+
+    stepBody = `
+      <div class="wizard-step-panel">
+        <h3>Step 6: Review & Generate Draft</h3>
+        <p class="step-desc">Confirm your settings and run the agent compilation pipeline.</p>
+        
+        <div class="wizard-review-grid mt-3" style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; background:#f8fafc; border:1px solid #e2e8f0; padding:0.75rem; border-radius:8px; font-size:0.8rem;">
+          <div class="review-item"><strong>Client:</strong> <span>${client.logo} ${client.name}</span></div>
+          <div class="review-item"><strong>Campaign:</strong> <span>${crWizardInputs.campaignName}</span></div>
+          <div class="review-item"><strong>Agent:</strong> <span>${getAgentNameById(crWizardInputs.agentId)}</span></div>
+          <div class="review-item"><strong>Format:</strong> <span>${crWizardInputs.outputType}</span></div>
+          <div class="review-item" style="grid-column: span 2;">
+            <strong>Evidence:</strong> 
+            <span>${ev ? `${ev.name} (${ev.verificationStatus})` : 'None'}</span>
+          </div>
+        </div>
+
+        ${isUnverified ? `
+          <div class="wizard-warning-card warning mt-3" style="background:#fffbeb; border:1px solid #fcd34d; padding:0.75rem; border-radius:6px; color:#b45309; font-size:0.75rem; display:flex; gap:0.5rem; align-items:flex-start; line-height:1.4;">
+            <span>⚠️</span>
+            <div>
+              <strong>Accuracy Policy Warning:</strong> The selected source document is marked as <strong>Unverified</strong>. Generating final content using unverified statistics or facts is against accuracy rules.
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="wizard-additional-inputs mt-4">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+            <div class="form-group">
+              <label>Target Platform</label>
+              <select id="wzPlatform" class="form-select">
+                <option value="Facebook" ${crWizardInputs.platform === 'Facebook' ? 'selected' : ''}>Facebook</option>
+                <option value="Instagram" ${crWizardInputs.platform === 'Instagram' ? 'selected' : ''}>Instagram</option>
+                <option value="LinkedIn" ${crWizardInputs.platform === 'LinkedIn' ? 'selected' : ''}>LinkedIn</option>
+                <option value="WhatsApp" ${crWizardInputs.platform === 'WhatsApp' ? 'selected' : ''}>WhatsApp</option>
+                <option value="Email newsletter" ${crWizardInputs.platform === 'Email newsletter' ? 'selected' : ''}>Email newsletter</option>
+                <option value="Website" ${crWizardInputs.platform === 'Website' ? 'selected' : ''}>Website</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Tone of Voice</label>
+              <select id="wzTone" class="form-select">
+                <option value="Grassroots, Encouraging" ${crWizardInputs.tone === 'Grassroots, Encouraging' ? 'selected' : ''}>Grassroots, Encouraging</option>
+                <option value="Urgent, Empowering" ${crWizardInputs.tone === 'Urgent, Empowering' ? 'selected' : ''}>Urgent, Empowering</option>
+                <option value="Professional, Fact-based" ${crWizardInputs.tone === 'Professional, Fact-based' ? 'selected' : ''}>Professional, Fact-based</option>
+                <option value="Informative, Accessible" ${crWizardInputs.tone === 'Informative, Accessible' ? 'selected' : ''}>Informative, Accessible</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-top:0.75rem;">
+            <div class="form-group">
+              <label>Due Date</label>
+              <input type="date" id="wzDueDate" class="form-control" value="${crWizardInputs.dueDate}" />
+            </div>
+            <div class="form-group">
+              <label>Approval Reviewer</label>
+              <input type="text" id="wzApprovalPerson" class="form-control" value="${crWizardInputs.approvalPerson}" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress simulator loader -->
+        <div id="wzGenProgress" style="display:none; background:#f1f5f9; padding:0.75rem; border-radius:6px; border:1px solid #e2e8f0; margin-top:1.25rem;">
+          <div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-bottom:0.25rem;">
+            <strong id="wzGenStatusText">AI Agent compiling inputs...</strong>
+            <span id="wzGenPercent">0%</span>
+          </div>
+          <div style="background:#cbd5e1; height:6px; border-radius:3px; overflow:hidden;">
+            <div id="wzGenProgressBar" style="background:var(--primary-color); height:100%; width:0%; transition:width 0.1s linear;"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Next / Prev button triggers logic
+  const isAgentTileSelected = !!crWizardInputs.agentId;
+  const isAgentReady = isAgentTileSelected && getAgentChecklist(crWizardInputs.agentId, client, clientEvidence).every(c => c.met);
+  
+  let nextDisabled = false;
+  if (crWizardStep === 3 && !isAgentReady) nextDisabled = true;
+  if (crWizardStep === 4 && !crWizardInputs.outputType) nextDisabled = true;
+  if (crWizardStep === 5 && !crWizardInputs.evidenceId) nextDisabled = true;
+
+  const buttonsRow = `
+    <div class="wizard-buttons-row mt-4" style="display:flex; justify-content:space-between; align-items:center;">
+      <button class="btn btn-outline" id="wzPrevBtn" ${crWizardStep === 1 ? 'disabled' : ''}>⬅️ Previous</button>
+      ${crWizardStep < 6 ? `
+        <button class="btn btn-primary" id="wzNextBtn" ${nextDisabled ? 'disabled' : ''}>Next ➡️</button>
+      ` : `
+        <button class="btn btn-success" id="wzGenerateBtn">🚀 Generate Content Draft</button>
+      `}
+    </div>
+  `;
+
+  return `
+    <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+      ${stepsHeader}
+      ${stepBody}
+      ${buttonsRow}
+    </div>
+  `;
+}
+
+function renderEvidenceTabContent(client, clientEvidence) {
+  let filtered = clientEvidence;
+  if (crEvidenceFilter !== 'All') {
+    filtered = clientEvidence.filter(e => e.verificationStatus === crEvidenceFilter);
+  }
+
+  const listHtml = filtered.length === 0
+    ? `<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No evidence files found matching criteria.</td></tr>`
+    : filtered.map(e => `
+        <tr>
+          <td>
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <span>${getFileIcon(e.sourceType)}</span>
+              <a href="/${e.name}" target="_blank" class="evidence-filename-link" style="text-decoration:underline; color:var(--primary-color); font-weight:600;" title="Click to open file in browser">${e.name}</a>
+              ${e.isDemoData ? '<span class="demo-badge" style="background:#e0f2fe; color:#0369a1; font-size:0.65rem; padding:0.1rem 0.3rem; border-radius:4px; margin-left:0.25rem;">Demo</span>' : ''}
+            </div>
+          </td>
+          <td>${e.project || 'General'} / ${e.campaign || 'None'}</td>
+          <td>${e.sourceType}</td>
+          <td><span class="badge-status ${e.verificationStatus.toLowerCase().replace(' ', '-')}">${e.verificationStatus}</span></td>
+          <td>${e.dateUploaded}</td>
+          <td>
+            ${e.verificationStatus !== 'Verified' ? `
+              <button class="btn btn-xs btn-outline verify-evidence-btn" data-ev-id="${e.id}">Verify Source</button>
+            ` : `<span style="color:var(--success-color); font-weight:600; font-size:0.75rem;">✓ Verified</span>`}
+          </td>
+        </tr>
+      `).join('');
+
+  return `
+    <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">
+        <div>
+          <h3 style="margin:0; font-weight:600;">📥 Evidence & Ingestion Database</h3>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin:0.25rem 0 0 0;">Manage and verify fact sheets, logs, audits, and research reports.</p>
+        </div>
+        <button class="btn btn-primary" id="ingestEvidenceBtn">➕ Connect & Ingest File</button>
+      </div>
+
+      <div class="evidence-filters mb-3" style="display:flex; gap:0.5rem; align-items:center;">
+        <span style="font-size:0.8rem; font-weight:600; margin-right:0.5rem; color:var(--text-muted);">Filter Status:</span>
+        <button class="btn btn-xs ${crEvidenceFilter === 'All' ? 'btn-primary' : 'btn-outline'}" data-filter="All">All</button>
+        <button class="btn btn-xs ${crEvidenceFilter === 'Verified' ? 'btn-primary' : 'btn-outline'}" data-filter="Verified">Verified</button>
+        <button class="btn btn-xs ${crEvidenceFilter === 'Needs Review' ? 'btn-primary' : 'btn-outline'}" data-filter="Needs Review">Needs Review</button>
+        <button class="btn btn-xs ${crEvidenceFilter === 'Unverified' ? 'btn-primary' : 'btn-outline'}" data-filter="Unverified">Unverified</button>
+      </div>
+
+      <div class="clean-table-container">
+        <table class="clean-table">
+          <thead>
+            <tr>
+              <th>File Name</th>
+              <th>Project / Campaign</th>
+              <th>Format</th>
+              <th>Status</th>
+              <th>Upload Date</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${listHtml}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderApprovalsTabContent(client, clientOutputs) {
+  if (clientOutputs.length === 0) {
+    return `
+      <div class="card p-4 text-center" style="padding:4rem; background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+        <span style="font-size:2rem; display:block; margin-bottom:1rem;">⏳</span>
+        <h3 style="margin:0;">Approval Queue is Empty</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin:0.5rem 0 1.5rem 0;">No generated drafts found. Setup parameters and hit "Generate Content Draft" in the Create Work wizard to initiate.</p>
+        <button class="btn btn-primary" id="approvalsGoCreateBtn">Create New Work</button>
+      </div>
+    `;
+  }
+
+  const itemsHtml = clientOutputs.map(o => {
+    let statusStep = 1;
+    if (o.approvalStatus === 'Internal Review') statusStep = 2;
+    else if (o.approvalStatus === 'Sent to Client') statusStep = 3;
+    else if (o.approvalStatus === 'Client Approved') statusStep = 4;
+    else if (o.approvalStatus === 'Scheduled') statusStep = 5;
+    else if (o.approvalStatus === 'Published') statusStep = 6;
+
+    const isExpanded = crExpandedOutputs[o.id] !== false; // default expanded
+
+    return `
+      <div class="approval-card card mb-3" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm); overflow:hidden;">
+        <!-- Accordion Header -->
+        <div class="approval-accordion-header" data-out-id="${o.id}" style="display:flex; justify-content:space-between; align-items:center; padding:1rem; cursor:pointer; background:#f8fafc; user-select:none;">
+          <div style="display:flex; align-items:center; gap:0.6rem;">
+            <span class="accordion-toggle-arrow" style="font-size:0.8rem; color:var(--text-muted); width:12px; display:inline-block;">${isExpanded ? '▼' : '▶'}</span>
+            <div>
+              <strong style="font-size:0.9rem; color:var(--primary-color);">${getAgentNameById(o.agentId)}</strong>
+              <span class="text-muted" style="font-size:0.8rem; margin-left:0.25rem;">➔ ${o.outputType}</span>
+              ${o.isDemoData ? '<span class="demo-badge" style="background:#e0f2fe; color:#0369a1; font-size:0.65rem; padding:0.1rem 0.3rem; border-radius:4px; margin-left:0.4rem;">Demo</span>' : ''}
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.6rem;">
+            <span class="badge-status ${getApprovalStatusClass(o.approvalStatus)}">${o.approvalStatus}</span>
+          </div>
+        </div>
+
+        <!-- Accordion Body -->
+        <div class="approval-accordion-body" style="display: ${isExpanded ? 'block' : 'none'}; padding: 1.25rem; border-top: 1px solid var(--border-color);">
+          <!-- Workflow Stage Map Visual -->
+          <div class="status-stepper mb-3" style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted); padding:0.4rem 0.6rem; background:#f8fafc; border-radius:6px; border:1px solid #f1f5f9;">
+            <span class="step-indicator-item" style="font-weight:${statusStep === 1 ? '700' : '400'}; color:${statusStep >= 1 ? 'var(--primary-color)' : 'inherit'};">1. Draft</span>
+            <span class="step-connector">➔</span>
+            <span class="step-indicator-item" style="font-weight:${statusStep === 2 ? '700' : '400'}; color:${statusStep >= 2 ? 'var(--primary-color)' : 'inherit'};">2. Internal</span>
+            <span class="step-connector">➔</span>
+            <span class="step-indicator-item" style="font-weight:${statusStep === 3 ? '700' : '400'}; color:${statusStep >= 3 ? 'var(--primary-color)' : 'inherit'};">3. Sent</span>
+            <span class="step-connector">➔</span>
+            <span class="step-indicator-item" style="font-weight:${statusStep === 4 ? '700' : '400'}; color:${statusStep >= 4 ? 'var(--primary-color)' : 'inherit'};">4. Approved</span>
+            <span class="step-connector">➔</span>
+            <span class="step-indicator-item" style="font-weight:${statusStep === 5 ? '700' : '400'}; color:${statusStep >= 5 ? 'var(--primary-color)' : 'inherit'};">5. Scheduled</span>
+            <span class="step-connector">➔</span>
+            <span class="step-indicator-item" style="font-weight:${statusStep === 6 ? '700' : '400'}; color:${statusStep >= 6 ? 'var(--primary-color)' : 'inherit'};">6. Published</span>
+          </div>
+
+          <!-- Edit Content Block -->
+          <div class="approval-content-box" id="contentBox-${o.id}" style="background:#f8fafc; padding:1rem; border-radius:6px; border:1px solid var(--border-color); font-size:0.85rem; line-height:1.5; white-space:pre-wrap; margin-bottom:0.75rem;">${o.content}</div>
+          <textarea class="form-control" id="contentEdit-${o.id}" style="display:none; font-size:0.85rem; margin-bottom:0.75rem; height:150px; font-family:inherit; border-left: 3px solid var(--primary-color); line-height:1.5; width:100%; padding:0.5rem;">${o.content}</textarea>
+
+          <!-- Source Evidence Trace Panel -->
+          <div class="evidence-trace-box p-3" style="background:rgba(59, 130, 246, 0.03); border:1px solid rgba(59, 130, 246, 0.1); border-radius:6px; margin-bottom:1rem; font-size:0.75rem;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem; font-weight:600; color:var(--primary-color);">
+              <span>🔍 EVIDENCE TRACE [Confidence: ${o.confidenceScore}%]</span>
+              <span style="color:${o.verificationStatus === 'Verified' ? 'var(--success-color)' : 'var(--warning-color)'};">${o.verificationStatus} Evidence</span>
+            </div>
+            <div style="color:var(--text-muted); margin-bottom:0.4rem;">
+              <strong>Source File:</strong> ${o.sourceDocName || 'None'} (${o.sourceDocType || 'Unknown'}) | Uploaded: ${o.sourceDocUploadDate || 'N/A'}
+            </div>
+            <div class="evidence-trace-quote" style="font-style:italic; padding-left:0.5rem; border-left:2px solid #cbd5e1; color:#475569;">
+              "${o.sourceEvidence || 'Evidence missing. Please upload or verify source information.'}"
+            </div>
+            <div style="font-size:0.65rem; color:#b45309; font-weight:600; margin-top:0.4rem; display:flex; align-items:center; gap:0.2rem;">
+              ⚠️ Strictly evidence-based. No facts, numbers, dates or campaign results were invented by AI.
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-color); padding-top:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+            <div style="display:flex; gap:0.4rem;">
+              <button class="btn btn-xs btn-outline edit-output-btn" data-out-id="${o.id}">✏️ Edit</button>
+              <button class="btn btn-xs btn-outline save-output-btn" data-out-id="${o.id}" style="display:none; background:var(--success-color); color:white; border-color:var(--success-color);">💾 Save</button>
+              <button class="btn btn-xs btn-outline regen-output-btn" data-out-id="${o.id}">🔄 Regenerate</button>
+            </div>
+            <div style="display:flex; gap:0.4rem; justify-content:flex-end;">
+              ${o.approvalStatus === 'Draft' ? `
+                <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Internal Review">Approve Internal</button>
+              ` : ''}
+              ${o.approvalStatus === 'Internal Review' ? `
+                <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Sent to Client">Send to Client</button>
+              ` : ''}
+              ${o.approvalStatus === 'Sent to Client' ? `
+                <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Client Approved">Client Approved</button>
+              ` : ''}
+              ${o.approvalStatus === 'Client Approved' ? `
+                <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Scheduled">Schedule Post</button>
+              ` : ''}
+              ${o.approvalStatus === 'Scheduled' ? `
+                <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Published">Publish Now</button>
+              ` : ''}
+              <button class="btn btn-xs btn-outline export-output-btn" data-out-id="${o.id}">📤 Export Text</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <div>
+        <h3 style="margin:0; font-weight:600;">⏳ Content Approvals & Editorial Pipeline</h3>
+        <p style="font-size:0.8rem; color:var(--text-muted); margin:0.25rem 0 0 0;">Move generated drafts from creation to internal review, client portals, and social queues.</p>
+      </div>
+    </div>
+    <div class="approvals-container">
+      ${itemsHtml}
+    </div>
+  `;
+}
+
+function renderReportsTabContent(client) {
+  const reports = state.reports.filter(r => r.client === client.id);
+  const reportsHtml = reports.length === 0
+    ? `<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No reports created for this client yet.</td></tr>`
+    : reports.map(r => `
+        <tr>
+          <td><strong>${r.name}</strong></td>
+          <td>${r.donor}</td>
+          <td><span style="color:var(--danger-color); font-weight:600;">${r.dueDate}</span></td>
+          <td>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <div style="background:#cbd5e1; height:6px; width:80px; border-radius:3px; overflow:hidden;">
+                <div style="background:var(--success-color); height:100%; width:${r.completion}%;"></div>
+              </div>
+              <span>${r.completion}%</span>
+            </div>
+          </td>
+          <td>${r.agent}</td>
+          <td>
+            <div style="display:flex; gap:0.25rem;">
+              <button class="btn btn-xs btn-outline export-report-word" data-rep-id="${r.id}">Word</button>
+              <button class="btn btn-xs btn-outline export-report-ppt" data-rep-id="${r.id}">PPT</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+  return `
+    <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <div>
+          <h3 style="margin:0; font-weight:600;">📋 Donor & Funder Reporting Center</h3>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin:0.25rem 0 0 0;">Generate, track, and export formal reports compile-ready for grant compliance audits.</p>
+        </div>
+      </div>
+
+      <div class="clean-table-container">
+        <table class="clean-table">
+          <thead>
+            <tr>
+              <th>Report Name</th>
+              <th>Funder / Donor</th>
+              <th>Due Date</th>
+              <th>Completion Progress</th>
+              <th>Generating Agent</th>
+              <th>Export Layouts</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reportsHtml}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderSettingsTabContent() {
+  const selectedAgent = state.agents.find(a => a.id === crSelectedSettingAgentId) || state.agents[0];
+  
+  const instructions = selectedAgent.instructions || `You are the ${selectedAgent.name}. Your primary task is to align and process data to fulfill: ${selectedAgent.purpose}`;
+  const brandVoice = selectedAgent.brandVoice || `Authentic, fact-driven, accessible, and community-centric.`;
+  const guidelines = selectedAgent.guidelines || `1. Only present verified facts.\n2. Ensure grammar is clear and concise.\n3. Format headings with bold markers.`;
+  const approvalRules = selectedAgent.approvalRules || `Requires internal review validation by IK Communications manager before publication.`;
+
+  const sidebarHtml = state.agents.map(a => `
+    <button class="settings-nav-btn ${a.id === crSelectedSettingAgentId ? 'active' : ''}" data-agent-id="${a.id}" style="width:100%; border:none; text-align:left; padding:0.6rem 0.8rem; border-radius:6px; font-size:0.8rem; font-weight:600; cursor:pointer; margin-bottom:0.25rem; display:block;">
+      🤖 ${a.name}
+    </button>
+  `).join('');
+
+  return `
+    <div class="settings-layout" style="display:grid; grid-template-columns: 240px 1fr; gap:1.5rem;">
+      <!-- Left Sidebar Selector -->
+      <div class="settings-sidebar card p-3" style="align-self:start; background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+        <h4 style="margin:0 0 0.75rem 0; font-size:0.85rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">AI Co-workers</h4>
+        <div style="display:flex; flex-direction:column;">
+          ${sidebarHtml}
+        </div>
+      </div>
+
+      <!-- Right Editor Pane -->
+      <div class="settings-editor card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+        <h3 style="margin-top:0; font-weight:600;">⚙️ Agent Persona & Guidelines Configuration</h3>
+        <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1.5rem;">Decouple and customize the core prompting instructions, rules and voice guidelines for <strong>${selectedAgent.name}</strong>.</p>
+        
+        <form id="agentSettingsForm" style="display:flex; flex-direction:column; gap:1rem;">
+          <div class="form-group">
+            <label style="font-weight:600; font-size:0.8rem; display:block; margin-bottom:0.25rem;">System Prompts / Directives</label>
+            <textarea id="setInstructions" class="form-control" style="height:100px; font-size:0.8rem; font-family:inherit; line-height:1.4; width:100%; padding:0.5rem;">${instructions}</textarea>
+          </div>
+          <div class="form-group">
+            <label style="font-weight:600; font-size:0.8rem; display:block; margin-bottom:0.25rem;">Tone & Brand Voice Parameters</label>
+            <textarea id="setBrandVoice" class="form-control" style="height:80px; font-size:0.8rem; font-family:inherit; line-height:1.4; width:100%; padding:0.5rem;">${brandVoice}</textarea>
+          </div>
+          <div class="form-group">
+            <label style="font-weight:600; font-size:0.8rem; display:block; margin-bottom:0.25rem;">Required Formatting Guidelines & Templates</label>
+            <textarea id="setGuidelines" class="form-control" style="height:80px; font-size:0.8rem; font-family:inherit; line-height:1.4; width:100%; padding:0.5rem;">${guidelines}</textarea>
+          </div>
+          <div class="form-group">
+            <label style="font-weight:600; font-size:0.8rem; display:block; margin-bottom:0.25rem;">Human-in-the-loop Approval Rules</label>
+            <textarea id="setApprovalRules" class="form-control" style="height:80px; font-size:0.8rem; font-family:inherit; line-height:1.4; width:100%; padding:0.5rem;">${approvalRules}</textarea>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; margin-top:1rem; border-top:1px solid var(--border-color); padding-top:1rem;">
+            <button type="submit" class="btn btn-primary">💾 Save Agent Persona Configuration</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+function bindActiveTabEvents(container, client, briefStatus, clientEvidence, clientOutputs) {
+  // Overview Tab events
+  if (crActiveTab === 'overview') {
+    container.querySelectorAll('.task-checkbox').forEach(chk => {
+      chk.addEventListener('change', (e) => {
+        const tid = chk.getAttribute('data-task-id');
+        const task = state.tasks.find(t => t.id === tid);
+        if (task) {
+          task.status = chk.checked ? 'Completed' : 'Pending';
+          notify();
+        }
+      });
+    });
+
+    container.querySelectorAll('.overview-go-approvals').forEach(btn => {
+      btn.addEventListener('click', () => {
+        crActiveTab = 'approvals';
+        notify();
+      });
+    });
+
+    const overviewEditBrief = document.getElementById('overviewEditBrief');
+    if (overviewEditBrief) {
+      overviewEditBrief.addEventListener('click', () => {
+        openEditBriefModal(client.id);
+      });
+    }
+  }
+
+  // Create Work Tab events
+  if (crActiveTab === 'create-work') {
+    const wzClientSelect = document.getElementById('wzClientSelect');
+    if (wzClientSelect) {
+      wzClientSelect.addEventListener('change', (e) => {
+        crWizardInputs.clientId = e.target.value;
+        const matched = state.clients.find(c => c.id === e.target.value);
+        if (matched) {
+          const activeCampaigns = state.campaigns.filter(c => c.client === matched.id);
+          crWizardInputs.campaignName = activeCampaigns.length > 0 ? activeCampaigns[0].name : (matched.campaignName || 'General');
+          crWizardInputs.approvalPerson = matched.primaryContact || 'Irene K.';
+          crWizardInputs.agentId = '';
+          crWizardInputs.outputType = '';
+          crWizardInputs.evidenceId = '';
+        }
+        notify();
+      });
+    }
+
+    const wzCampaignSelect = document.getElementById('wzCampaignSelect');
+    if (wzCampaignSelect) {
+      wzCampaignSelect.addEventListener('change', (e) => {
+        crWizardInputs.campaignName = e.target.value;
+      });
+    }
+
+    container.querySelectorAll('.agent-tile-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        crWizardInputs.agentId = btn.getAttribute('data-agent-id');
+        crWizardInputs.outputType = ''; // reset output type
+        notify();
+      });
+    });
+
+    const wzCompleteBriefBtn = document.getElementById('wzCompleteBriefBtn');
+    if (wzCompleteBriefBtn) {
+      wzCompleteBriefBtn.addEventListener('click', () => {
+        openEditBriefModal(client.id);
+      });
+    }
+
+    const wzOutputTypeSelect = document.getElementById('wzOutputTypeSelect');
+    if (wzOutputTypeSelect) {
+      wzOutputTypeSelect.addEventListener('change', (e) => {
+        crWizardInputs.outputType = e.target.value;
+        notify(); // redraw button state
+      });
+    }
+
+    const wzEvidenceSelect = document.getElementById('wzEvidenceSelect');
+    if (wzEvidenceSelect) {
+      wzEvidenceSelect.addEventListener('change', (e) => {
+        crWizardInputs.evidenceId = e.target.value;
+        notify(); // redraw button state
+      });
+    }
+
+    const wzQuickUploadBtn = document.getElementById('wzQuickUploadBtn');
+    if (wzQuickUploadBtn) {
+      wzQuickUploadBtn.addEventListener('click', () => {
+        openSimulateUploadModal(client.id);
+      });
+    }
+
+    const wzPrevBtn = document.getElementById('wzPrevBtn');
+    if (wzPrevBtn) {
+      wzPrevBtn.addEventListener('click', () => {
+        crWizardStep = crWizardStep - 1;
+        notify();
+      });
+    }
+
+    const wzNextBtn = document.getElementById('wzNextBtn');
+    if (wzNextBtn) {
+      wzNextBtn.addEventListener('click', () => {
+        crWizardStep = crWizardStep + 1;
+        notify();
+      });
+    }
+
+    const wzGenerateBtn = document.getElementById('wzGenerateBtn');
+    if (wzGenerateBtn) {
+      wzGenerateBtn.addEventListener('click', () => {
+        // Read final inputs from review screen
+        const platform = document.getElementById('wzPlatform').value;
+        const tone = document.getElementById('wzTone').value;
+        const dueDate = document.getElementById('wzDueDate').value;
+        const approvalPerson = document.getElementById('wzApprovalPerson').value;
+
+        crWizardInputs.platform = platform;
+        crWizardInputs.tone = tone;
+        crWizardInputs.dueDate = dueDate;
+        crWizardInputs.approvalPerson = approvalPerson;
+
+        const ev = clientEvidence.find(e => e.id === crWizardInputs.evidenceId);
+        if (!ev) {
+          alert('Please select a source evidence document.');
+          return;
+        }
+
+        if (ev.verificationStatus === 'Unverified') {
+          const proceed = confirm(`⚠️ Warning: Selected source evidence is currently Unverified. Generating content using unverified statistics or facts is against accuracy rules.\n\nDo you want to proceed anyway?`);
+          if (!proceed) return;
+        }
+
+        // Show loading progress
+        const progressBox = document.getElementById('wzGenProgress');
+        const progressBar = document.getElementById('wzGenProgressBar');
+        const progressText = document.getElementById('wzGenStatusText');
+        const progressPercent = document.getElementById('wzGenPercent');
+        
+        progressBox.style.display = 'block';
+        wzPrevBtn.disabled = true;
+        wzGenerateBtn.disabled = true;
+
+        let progressPct = 0;
+        const interval = setInterval(() => {
+          progressPct += 10;
+          progressBar.style.width = `${progressPct}%`;
+          progressPercent.textContent = `${progressPct}%`;
+          
+          if (progressPct === 20) progressText.textContent = `Feeding source document "${ev.name}" context...`;
+          else if (progressPct === 50) progressText.textContent = `Applying target brand voice "${client.toneOfVoice}"...`;
+          else if (progressPct === 80) progressText.textContent = `Verifying factual alignment against source excerpt...`;
+          
+          if (progressPct >= 100) {
+            clearInterval(interval);
+            
+            const generatedContent = generateSimulatedAiOutputContent(crWizardInputs.agentId, client, crWizardInputs.campaignName, ev.textExcerpt, tone, crWizardInputs.outputType, platform);
+            
+            const matchedCampaign = state.campaigns.find(c => c.name === crWizardInputs.campaignName && c.client === client.id);
+            addAiOutput({
+              clientId: client.id,
+              client_id: client.id,
+              campaignName: crWizardInputs.campaignName,
+              campaignId: matchedCampaign ? matchedCampaign.id : 'cmp_gen',
+              campaign_id: matchedCampaign ? matchedCampaign.id : 'cmp_gen',
+              projectId: ev.project || 'General',
+              project_id: ev.project || 'General',
+              evidenceId: ev.id,
+              evidence_id: ev.id,
+              agentId: crWizardInputs.agentId,
+              agent_id: crWizardInputs.agentId,
+              approvalStatus: 'Draft',
+              approval_status: 'Draft',
+              createdAt: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              outputType: crWizardInputs.outputType,
+              platform: platform,
+              tone: tone,
+              dueDate: dueDate,
+              sourceEvidence: ev.textExcerpt,
+              sourceDocName: ev.name,
+              sourceDocType: ev.sourceType,
+              sourceDocUploadDate: ev.dateUploaded,
+              confidenceScore: Math.floor(Math.random() * 8) + 92, // 92-99%
+              verificationStatus: ev.verificationStatus,
+              content: generatedContent,
+              approvalPerson: approvalPerson
+            });
+
+            // Log activity in state
+            const agentObj = state.agents.find(a => a.id === crWizardInputs.agentId);
+            state.agentActivityLogs.unshift({
+              timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+              agent: agentObj ? agentObj.name : 'AI Agent',
+              client: client.name,
+              message: `Generated draft for "${crWizardInputs.campaignName}" successfully.`,
+              status: 'success'
+            });
+
+            if (agentObj) {
+              agentObj.tasksCompleted += 1;
+              agentObj.lastRun = 'Just now';
+            }
+
+            alert(`🎉 Success! Content has been generated and pushed to the Approvals tab.`);
+            crActiveTab = 'approvals';
+            crWizardStep = 1;
+            notify();
+          }
+        }, 150);
+      });
+    }
+  }
+
+  // Evidence Tab events
+  if (crActiveTab === 'evidence') {
+    container.querySelectorAll('.evidence-filters button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        crEvidenceFilter = btn.getAttribute('data-filter');
+        notify();
+      });
+    });
+
+    const ingestEvidenceBtn = document.getElementById('ingestEvidenceBtn');
+    if (ingestEvidenceBtn) {
+      ingestEvidenceBtn.addEventListener('click', () => {
+        openSimulateUploadModal(client.id);
+      });
+    }
+
+    container.querySelectorAll('.verify-evidence-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const evId = btn.getAttribute('data-ev-id');
+        const ev = state.evidence.find(e => e.id === evId);
+        if (ev) {
+          ev.verificationStatus = 'Verified';
+          alert(`Source evidence "${ev.name}" is now Verified and ready for generation!`);
+          notify();
+        }
+      });
+    });
+  }
+
+  // Approvals Tab events
+  if (crActiveTab === 'approvals') {
+    const approvalsGoCreateBtn = document.getElementById('approvalsGoCreateBtn');
+    if (approvalsGoCreateBtn) {
+      approvalsGoCreateBtn.addEventListener('click', () => {
+        crActiveTab = 'create-work';
+        crWizardStep = 1;
+        notify();
+      });
+    }
+
+    container.querySelectorAll('.approval-accordion-header').forEach(hdr => {
+      hdr.addEventListener('click', (e) => {
+        // Prevent click if clicking inside buttons
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        const outId = hdr.getAttribute('data-out-id');
+        crExpandedOutputs[outId] = crExpandedOutputs[outId] === false ? true : false;
+        notify();
+      });
+    });
+
+    // Inline Editing
+    container.querySelectorAll('.edit-output-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-out-id');
+        document.getElementById(`contentBox-${id}`).style.display = 'none';
+        const txt = document.getElementById(`contentEdit-${id}`);
+        txt.style.display = 'block';
+        txt.focus();
+        btn.style.display = 'none';
+        btn.parentElement.querySelector('.save-output-btn').style.display = 'inline-block';
+      });
+    });
+
+    container.querySelectorAll('.save-output-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-out-id');
+        const txtVal = document.getElementById(`contentEdit-${id}`).value;
+        const out = state.aiOutputs.find(o => o.id === id);
+        if (out) {
+          out.content = txtVal;
+          notify();
+          alert('Changes saved successfully!');
+        }
+      });
+    });
+
+    // Regeneration
+    container.querySelectorAll('.regen-output-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-out-id');
+        const out = state.aiOutputs.find(o => o.id === id);
+        if (out) {
+          btn.disabled = true;
+          btn.textContent = '🔄 Regening...';
+          setTimeout(() => {
+            const freshContent = generateSimulatedAiOutputContent(
+              out.agentId,
+              client,
+              out.campaignName,
+              out.sourceEvidence,
+              out.tone || 'Empowering, Urgent',
+              out.outputType,
+              out.platform || 'Facebook'
+            );
+            out.content = freshContent;
+            out.confidenceScore = Math.floor(Math.random() * 8) + 92;
+            alert('Draft regenerated successfully with fresh configuration parameters!');
+            notify();
+          }, 600);
+        }
+      });
+    });
+
+    // Progression stage
+    container.querySelectorAll('.approve-stage-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-out-id');
+        const targetStatus = btn.getAttribute('data-target-status');
+        updateAiOutputStatus(id, targetStatus);
+        alert(`Output successfully transitioned to stage: "${targetStatus}"!`);
+        notify();
+      });
+    });
+
+    // Plain text export
+    container.querySelectorAll('.export-output-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-out-id');
+        const out = state.aiOutputs.find(o => o.id === id);
+        if (out) {
+          const filename = `${out.outputType.replace(/ /g, '_')}_draft.txt`;
+          triggerDownload(out.content, filename, 'text/plain');
+          alert('Plain text exported successfully!');
+        }
+      });
+    });
+  }
+
+  // Reports Tab events
+  if (crActiveTab === 'reports') {
+    container.querySelectorAll('.export-report-word').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const rid = btn.getAttribute('data-rep-id');
+        const report = state.reports.find(r => r.id === rid);
+        if (report) {
+          const filename = `${report.name.replace(/ /g, '_')}.doc`;
+          const content = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+            <head><title>${report.name}</title></head>
+            <body style="font-family: Arial; padding: 20px;">
+              <h2>DONOR UPDATE SUMMARY</h2>
+              <p><strong>Report:</strong> ${report.name}</p>
+              <p><strong>Funder / Grantor:</strong> ${report.donor}</p>
+              <p><strong>Prepared for:</strong> Project Assessment Review</p>
+              <p><strong>Compiled by:</strong> IK Communications AI Donor Agent</p>
+              <h3>1. Executive Summary & Impact Analysis</h3>
+              <p>During this operational milestone, community outreach efforts were heavily accelerated. Grassroots indicators verify consistent engagement with learners, local schools, and volunteers in support of core deliverables.</p>
+              <h3>2. Visual Data Milestones</h3>
+              <p>[Visual Performance Index Chart Embedded - Verification Compliance: OK]</p>
+              <h3>3. Recommended Funder Actions</h3>
+              <p>We recommend releasing the subsequent funding tranche in support of localized monitoring devices and educational curriculum deployment schedules.</p>
+            </body>
+            </html>
+          `;
+          triggerDownload(content, filename, 'application/msword');
+          alert('Word document downloaded successfully!');
+        }
+      });
+    });
+
+    container.querySelectorAll('.export-report-ppt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const rid = btn.getAttribute('data-rep-id');
+        const report = state.reports.find(r => r.id === rid);
+        if (report) {
+          const filename = `${report.name.replace(/ /g, '_')}.txt`;
+          const content = `IK COMMUNICATIONS AI AGENT PRESENTATION BRIEF
+=============================================
+Report Title: ${report.name}
+Funder Target: ${report.donor}
+
+[SLIDE 1: TITLE SLIDE]
+- Header: Donor Update Summary
+- Subtitle: Prepared for ${report.donor}
+- Compiled by: IK Communications AI Donor Agent
+
+[SLIDE 2: EXECUTIVE SUMMARY]
+- Header: 1. Executive Summary & Impact Analysis
+- Key Fact: Community outreach efforts heavily accelerated.
+- Observation: Grassroots indicators verify consistent engagement.
+
+[SLIDE 3: VISUAL METRICS]
+- Header: 2. Visual Data Milestones
+- Content: [Visual Performance Index Chart Embedded - Verification Compliance: OK]
+
+[SLIDE 4: RECOMMENDATIONS]
+- Header: 3. Recommended Funder Actions
+- Action: Release subsequent funding tranche.
+- Impact: localized monitoring devices and educational curriculum deployment.
+`;
+          triggerDownload(content, filename, 'text/plain');
+          alert('PowerPoint text outline downloaded successfully!');
+        }
+      });
+    });
+  }
+
+  // Settings Tab events
+  if (crActiveTab === 'settings') {
+    container.querySelectorAll('.settings-nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        crSelectedSettingAgentId = btn.getAttribute('data-agent-id');
+        notify();
+      });
+    });
+
+    const agentSettingsForm = document.getElementById('agentSettingsForm');
+    if (agentSettingsForm) {
+      agentSettingsForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const instVal = document.getElementById('setInstructions').value;
+        const voiceVal = document.getElementById('setBrandVoice').value;
+        const guideVal = document.getElementById('setGuidelines').value;
+        const ruleVal = document.getElementById('setApprovalRules').value;
+
+        const agent = state.agents.find(a => a.id === crSelectedSettingAgentId);
+        if (agent) {
+          agent.instructions = instVal;
+          agent.brandVoice = voiceVal;
+          agent.guidelines = guideVal;
+          agent.approvalRules = ruleVal;
+          alert(`Configuration for ${agent.name} saved successfully!`);
+          notify();
+        }
+      });
+    }
+  }
+}
+
 export function renderAgentsDashboard(container) {
   const selectedClientId = state.selectedClientId || 'groundwork-demo';
   const client = state.clients.find(c => c.id === selectedClientId) || state.clients[0];
@@ -2946,743 +4243,110 @@ export function renderAgentsDashboard(container) {
   const clientEvidence = state.evidence.filter(e => e.client === client.id);
   const clientOutputs = state.aiOutputs.filter(o => o.clientId === client.id);
 
-  // Global KPI calculations for top cards
-  const activeAgentsCount = state.agents.filter(a => a.status !== 'Disabled').length;
-  const contentDraftsCount = state.aiOutputs.filter(o => o.approvalStatus === 'Draft').length;
-  const waitingApprovalCount = state.aiOutputs.filter(o => o.approvalStatus === 'Internal Review' || o.approvalStatus === 'Sent to Client').length;
-  const evidenceCount = state.evidence.length;
-  const reportsDueCount = state.reports.filter(r => r.status !== 'Submitted').length;
-  const activeCampaignsCount = state.campaigns.filter(c => c.status === 'Active' || c.status === 'Running').length;
+  // Persist / initialize wizard default client
+  if (!crWizardInputs.clientId) crWizardInputs.clientId = client.id;
+  if (!crWizardInputs.campaignName) {
+    const activeCampaigns = state.campaigns.filter(c => c.client === client.id);
+    crWizardInputs.campaignName = activeCampaigns.length > 0 ? activeCampaigns[0].name : (client.campaignName || 'General');
+  }
+  if (!crWizardInputs.dueDate) {
+    crWizardInputs.dueDate = new Date(Date.now() + 604800000).toISOString().split('T')[0];
+  }
+  if (!crWizardInputs.approvalPerson) {
+    crWizardInputs.approvalPerson = client.primaryContact || 'Irene K.';
+  }
 
-  // Render Layout HTML
+  // Render main container structure
   container.innerHTML = `
     <div class="control-room-layout">
-      <!-- Section Header -->
-      <div class="section-header-row mb-2">
-        <div>
-          <h1>AI Agent Control Room</h1>
-          <p class="subtitle">Manage client content creation, storytelling, donor communication and campaign delivery from one workspace.</p>
-        </div>
-      </div>
-
-      <!-- Top KPI Summary Row (Dashboard Layout #8) -->
-      <div class="kpi-row-6 mb-4">
-        <div class="kpi-card">
-          <div class="kpi-icon primary">🤖</div>
-          <div class="kpi-info">
-            <span class="kpi-label">Active Agents</span>
-            <span class="kpi-value">${activeAgentsCount} Running</span>
-          </div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon info">📝</div>
-          <div class="kpi-info">
-            <span class="kpi-label">Content Drafts</span>
-            <span class="kpi-value">${contentDraftsCount} Drafts</span>
-          </div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon warning">⏳</div>
-          <div class="kpi-info">
-            <span class="kpi-label">Waiting Approval</span>
-            <span class="kpi-value">${waitingApprovalCount} Items</span>
-          </div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon success">📥</div>
-          <div class="kpi-info">
-            <span class="kpi-label">Evidence Uploaded</span>
-            <span class="kpi-value">${evidenceCount} Sources</span>
-          </div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon danger">📋</div>
-          <div class="kpi-info">
-            <span class="kpi-label">Reports Due</span>
-            <span class="kpi-value">${reportsDueCount} Required</span>
-          </div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon secondary">🔥</div>
-          <div class="kpi-info">
-            <span class="kpi-label">Active Campaigns</span>
-            <span class="kpi-value">${activeCampaignsCount} Active</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Workspace switcher dropdown (Dashboard Layout #8 & Client selectors) -->
-      <div class="card mb-4" style="padding: 1rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <span style="font-size: 1.25rem;">🏢</span>
-            <div>
-              <strong style="font-size: 0.95rem; display: block;">Active Client Workspace</strong>
-              <span style="font-size: 0.75rem; color: var(--text-muted);">Switch to view score, documents, and trigger campaigns</span>
-            </div>
-          </div>
-          <div>
-            <select id="crClientSelector" class="form-select" style="min-width: 250px; padding: 0.4rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color); font-weight: 500;">
+      <!-- 1. Top Header -->
+      <div class="cr-header-card mb-4" style="background:linear-gradient(135deg, #1e3a8a 0%, #15803d 100%); padding:1.25rem 1.5rem; border-radius:12px; box-shadow:var(--shadow-md); color:white; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1.25rem;">
+        <div class="cr-header-info" style="display:flex; gap:2rem; flex-wrap:wrap;">
+          <div class="cr-header-meta-item" style="display:flex; flex-direction:column; gap:0.25rem;">
+            <label style="font-size:0.7rem; text-transform:uppercase; opacity:0.85; font-weight:600; letter-spacing:0.5px; color:#cbd5e1;">Active Client</label>
+            <select id="crClientSelect" class="cr-header-select" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.25); color:white; font-size:0.9rem; padding:0.25rem 0.5rem; border-radius:6px; font-weight:600; outline:none; cursor:pointer;">
               ${state.clients.map(c => `
-                <option value="${c.id}" ${c.id === client.id ? 'selected' : ''}>
-                  ${c.logo} ${c.name} (${c.isDemo ? 'Demo Data' : 'Real Client'})
+                <option value="${c.id}" ${c.id === client.id ? 'selected' : ''} style="color:var(--text-color); font-weight:normal;">
+                  ${c.logo} ${c.name}
                 </option>
               `).join('')}
             </select>
           </div>
+          <div class="cr-header-meta-item" style="display:flex; flex-direction:column; gap:0.25rem;">
+            <label style="font-size:0.7rem; text-transform:uppercase; opacity:0.85; font-weight:600; letter-spacing:0.5px; color:#cbd5e1;">Active Campaign</label>
+            <span class="meta-value" style="font-size:0.95rem; font-weight:600;">${client.campaignName || 'General'}</span>
+          </div>
+          <div class="cr-header-meta-item" style="display:flex; flex-direction:column; gap:0.25rem;">
+            <label style="font-size:0.7rem; text-transform:uppercase; opacity:0.85; font-weight:600; letter-spacing:0.5px; color:#cbd5e1;">Client Readiness Score</label>
+            <span class="meta-value" style="display:flex; align-items:center; gap:0.4rem; font-size:0.95rem; font-weight:600;">
+              <span>${briefStatus.score}%</span>
+              <span class="badge-status ${briefStatus.status.toLowerCase()}" style="font-size:0.65rem; padding:0.15rem 0.35rem; font-weight:700;">${briefStatus.statusText}</span>
+            </span>
+          </div>
         </div>
+        <button class="btn" id="crCreateWorkCta" style="background:white; color:#1e3a8a; font-weight:700; border:none; padding:0.5rem 1rem; border-radius:8px; cursor:pointer; box-shadow:var(--shadow-sm); transition:all 0.2s;">🚀 Create New Work</button>
       </div>
 
-      <!-- Main Columns Grid -->
-      <div class="cr-grid">
-        
-        <!-- Left Side Column -->
-        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-          
-          <!-- 1. Client Brief Completion Score Panel (Section #1) -->
-          <div class="card brief-completion-card status-${briefStatus.status.toLowerCase()}">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-              <div>
-                <h3 style="font-size: 1.1rem; font-weight: 600;">Client Brief Completion: <span class="text-${briefStatus.status.toLowerCase()}">${briefStatus.score}%</span></h3>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">Check list of requirements for AI generation capabilities</p>
-              </div>
-              <span class="badge-status ${briefStatus.status.toLowerCase()}">${briefStatus.statusText}</span>
-            </div>
-            
-            <div class="brief-progress-bar-container">
-              <div class="brief-progress-bar bg-${briefStatus.status.toLowerCase()}" style="width: ${briefStatus.score}%;"></div>
-            </div>
+      <!-- 2. Main Navigation Tabs -->
+      <div class="cr-tabs-nav mb-4" style="display:flex; border-bottom:1px solid var(--border-color); gap:1.5rem; margin-bottom:1.5rem;">
+        <button class="cr-tab-btn ${crActiveTab === 'overview' ? 'active' : ''}" data-tab="overview" style="background:none; border:none; border-bottom:3px solid ${crActiveTab === 'overview' ? 'var(--primary-color)' : 'transparent'}; color:${crActiveTab === 'overview' ? 'var(--primary-color)' : 'var(--text-muted)'}; font-weight:700; padding:0.6rem 0.25rem; cursor:pointer; outline:none; font-size:0.85rem;">👁️ Overview</button>
+        <button class="cr-tab-btn ${crActiveTab === 'create-work' ? 'active' : ''}" data-tab="create-work" style="background:none; border:none; border-bottom:3px solid ${crActiveTab === 'create-work' ? 'var(--primary-color)' : 'transparent'}; color:${crActiveTab === 'create-work' ? 'var(--primary-color)' : 'var(--text-muted)'}; font-weight:700; padding:0.6rem 0.25rem; cursor:pointer; outline:none; font-size:0.85rem;">🚀 Create Work</button>
+        <button class="cr-tab-btn ${crActiveTab === 'evidence' ? 'active' : ''}" data-tab="evidence" style="background:none; border:none; border-bottom:3px solid ${crActiveTab === 'evidence' ? 'var(--primary-color)' : 'transparent'}; color:${crActiveTab === 'evidence' ? 'var(--primary-color)' : 'var(--text-muted)'}; font-weight:700; padding:0.6rem 0.25rem; cursor:pointer; outline:none; font-size:0.85rem;">📥 Evidence Inbox</button>
+        <button class="cr-tab-btn ${crActiveTab === 'approvals' ? 'active' : ''}" data-tab="approvals" style="background:none; border:none; border-bottom:3px solid ${crActiveTab === 'approvals' ? 'var(--primary-color)' : 'transparent'}; color:${crActiveTab === 'approvals' ? 'var(--primary-color)' : 'var(--text-muted)'}; font-weight:700; padding:0.6rem 0.25rem; cursor:pointer; outline:none; font-size:0.85rem;">⏳ Approvals</button>
+        <button class="cr-tab-btn ${crActiveTab === 'reports' ? 'active' : ''}" data-tab="reports" style="background:none; border:none; border-bottom:3px solid ${crActiveTab === 'reports' ? 'var(--primary-color)' : 'transparent'}; color:${crActiveTab === 'reports' ? 'var(--primary-color)' : 'var(--text-muted)'}; font-weight:700; padding:0.6rem 0.25rem; cursor:pointer; outline:none; font-size:0.85rem;">📋 Reports</button>
+        <button class="cr-tab-btn ${crActiveTab === 'settings' ? 'active' : ''}" data-tab="settings" style="background:none; border:none; border-bottom:3px solid ${crActiveTab === 'settings' ? 'var(--primary-color)' : 'transparent'}; color:${crActiveTab === 'settings' ? 'var(--primary-color)' : 'var(--text-muted)'}; font-weight:700; padding:0.6rem 0.25rem; cursor:pointer; outline:none; font-size:0.85rem;">⚙️ Agent Settings</button>
+      </div>
 
-            <!-- Missing information Alerts (Section #1 & #8) -->
-            <div style="margin-top: 1rem;">
-              <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-color);">Missing Information Alert Summary</h4>
-              ${briefStatus.score === 100 ? `
-                <p style="font-size: 0.8rem; color: var(--success-color); font-weight: 500; margin-top: 0.5rem;">🎉 Client brief is 100% complete! Agents have maximum contextual accuracy.</p>
-              ` : `
-                <div class="missing-info-grid">
-                  ${Object.keys(briefStatus.missing).map(sec => {
-                    const missingFields = briefStatus.missing[sec];
-                    if (missingFields.length === 0) return '';
-                    const sectionTitles = {
-                      ngoProfile: 'A. NGO Profile',
-                      brandIdentity: 'B. Brand Identity',
-                      targetAudience: 'C. Target Audience',
-                      campaignInfo: 'D. Campaign Information',
-                      projectEvidence: 'E. Project Evidence',
-                      donorInfo: 'F. Donor & Funder Info',
-                      contentRequirements: 'G. Content Requirements'
-                    };
-                    return `
-                      <div class="missing-info-section">
-                        <h4>${sectionTitles[sec] || sec}</h4>
-                        <ul class="missing-fields-list">
-                          ${missingFields.map(f => `<li>${f}</li>`).join('')}
-                        </ul>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-              `}
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; margin-top: 1.25rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
-              <button class="btn btn-primary" id="editBriefBtn">✏️ Edit Client Brief</button>
-            </div>
-          </div>
-
-          <!-- 2. Agent Cards Grid (Section #2) -->
-          <div>
-            <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.75rem;">🤖 AI Agent Co-workers</h2>
-            <div class="agents-sub-grid">
-              ${state.agents.map(a => {
-                let checklist = [];
-                let isReady = true;
-
-                if (a.id === 'storytelling') {
-                  checklist = [
-                    { name: 'Campaign brief completed', met: !!client.campaignName && !!client.campaignGoal },
-                    { name: 'Reports / Research available', met: !!client.evidenceReports || !!client.evidenceResearch },
-                    { name: 'Project evidence attached', met: !!client.evidenceNotes || !!client.evidenceRegisters || clientEvidence.length > 0 },
-                    { name: 'Target audience selected', met: !!client.targetReach },
-                    { name: 'Tone of voice selected', met: !!client.toneOfVoice },
-                    { name: 'Key message completed', met: !!client.campaignMessage },
-                    { name: 'Photos / evidence available', met: !!client.evidencePhotos || !!client.evidenceVideos }
-                  ];
-                } else if (a.id === 'socialmedia') {
-                  checklist = [
-                    { name: 'Client profile completed', met: !!client.name && !!client.website },
-                    { name: 'Campaign brief completed', met: !!client.campaignGoal },
-                    { name: 'Target audience selected', met: !!client.targetReach },
-                    { name: 'Brand voice selected', met: !!client.toneOfVoice },
-                    { name: 'Platform selected', met: !!client.contentPlatforms || !!client.campaignPlatforms },
-                    { name: 'Source evidence attached', met: clientEvidence.length > 0 },
-                    { name: 'Approval person selected', met: !!client.primaryContact }
-                  ];
-                } else if (a.id === 'canva-brief') {
-                  checklist = [
-                    { name: 'Campaign title completed', met: !!client.campaignName },
-                    { name: 'Poster message complete', met: !!client.campaignMessage },
-                    { name: 'Target platform selected', met: !!client.contentPlatforms },
-                    { name: 'Logo uploaded', met: !!client.logo },
-                    { name: 'Brand colours configured', met: !!client.brandColours },
-                    { name: 'Image assets defined', met: !!client.evidencePhotos },
-                    { name: 'Poster size defined', met: !!client.posterSizes },
-                    { name: 'Main CTA defined', met: !!client.campaignCta },
-                    { name: 'Contact details verified', met: !!client.email || !!client.phone }
-                  ];
-                } else if (a.id === 'calendar') {
-                  checklist = [
-                    { name: 'Campaign dates ready', met: !!client.campaignStart && !!client.campaignEnd },
-                    { name: 'Awareness days ready', met: true },
-                    { name: 'Posting frequency configured', met: !!client.campaignFrequency },
-                    { name: 'Platforms selected', met: !!client.contentPlatforms },
-                    { name: 'Campaign priorities active', met: !!client.campaignPriority },
-                    { name: 'Donor deadlines tagged', met: !!client.reportingDeadlines }
-                  ];
-                } else if (a.id === 'reporting') {
-                  checklist = [
-                    { name: 'Project data / Impact ready', met: !!client.requiredImpactMetrics },
-                    { name: 'Photos / Media ready', met: !!client.evidencePhotos },
-                    { name: 'Attendance records ready', met: !!client.evidenceRegisters },
-                    { name: 'Survey results configured', met: !!client.evidenceSurveys || clientEvidence.some(ev => ev.contentType === 'Survey results') },
-                    { name: 'Donor requirements defined', met: !!client.requiredDonorOutputs },
-                    { name: 'Reporting period active', met: !!client.reportingDeadlines }
-                  ];
-                } else if (a.id === 'analytics') {
-                  checklist = [
-                    { name: 'Social metrics available', met: true },
-                    { name: 'Reach & engagement track', met: true },
-                    { name: 'Website clicks log', met: true },
-                    { name: 'Top-performing posts list', met: clientOutputs.length > 0 }
-                  ];
-                } else if (a.id === 'funding-comm') {
-                  checklist = [
-                    { name: 'Funder details verified', met: !!client.currentFunders },
-                    { name: 'Project results compiled', met: !!client.requiredImpactMetrics },
-                    { name: 'Impact stories generated', met: true },
-                    { name: 'Evidence documents linked', met: clientEvidence.length > 0 },
-                    { name: 'Funding goals clear', met: !!client.campaignGoal },
-                    { name: 'Grant requirements defined', met: !!client.grantNames }
-                  ];
-                }
-
-                isReady = checklist.every(item => item.met);
-
-                return `
-                  <div class="card agent-card">
-                    <div>
-                      <div class="agent-card-header">
-                        <h3 style="display:flex; align-items:center; gap:0.4rem;">🤖 ${a.name}</h3>
-                        <span class="badge ${a.status === 'Running' ? 'success' : 'info'}">${a.status}</span>
-                      </div>
-                      <p class="agent-desc">${a.purpose}</p>
-                      
-                      <div class="agent-meta-section">
-                        <strong>📥 Needs:</strong> <span>${checklist.map(n => n.name.split(' ')[0]).join(', ')}...</span>
-                      </div>
-                      <div class="agent-meta-section">
-                        <strong>📤 Outputs:</strong> <span>${getAgentOutputsList(a.id)}</span>
-                      </div>
-
-                      <div class="agent-checklist-box">
-                        <div class="agent-checklist-title">Agent Readiness Checklist</div>
-                        <ul class="agent-checklist">
-                          ${checklist.map(c => `
-                            <li class="${c.met ? 'checked' : 'missing'}">
-                              ${c.met ? '✅' : '❌'} ${c.name}
-                            </li>
-                          `).join('')}
-                        </ul>
-                      </div>
-                    </div>
-
-                    <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
-                      ${isReady ? `
-                        <button class="btn btn-sm btn-primary w-full run-agent-trigger-btn" data-agent-id="${a.id}">Configure & Run</button>
-                      ` : `
-                        <div style="font-size: 0.72rem; color: var(--danger-color); font-weight: 600; text-align: center; margin-bottom: 0.5rem; line-height:1.3;">
-                          ⚠️ Missing information required before generating final content.
-                        </div>
-                        <button class="btn btn-sm btn-outline w-full edit-brief-shortcut" style="color: var(--primary-color); border-color: var(--primary-color);">Complete Brief</button>
-                      `}
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          </div>
-
-          <!-- 3. Generate Work Panel (Section #5) -->
-          <div class="card" id="generateWorkPanel">
-            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; display:flex; align-items:center; gap:0.5rem;"><span>🚀</span> Generate Content Work</h3>
-            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Instruct AI agents to generate structured campaigns, stories, or briefs.</p>
-            
-            <form id="generateWorkForm" style="display:flex; flex-direction:column; gap:1rem;">
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
-                <div class="form-group">
-                  <label style="font-size:0.75rem; font-weight:600;">Active Client NGO</label>
-                  <select id="gwClient" class="form-select" disabled style="background:#f1f5f9;">
-                    <option value="${client.id}">${client.logo} ${client.name}</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label style="font-size:0.75rem; font-weight:600;">Active Campaign</label>
-                  <select id="gwCampaign" class="form-select" required>
-                    ${state.campaigns.filter(c => c.client === client.id).map(c => `
-                      <option value="${c.name}">${c.name}</option>
-                    `).join('') || `<option value="${client.campaignName || 'General'}">${client.campaignName || 'General'}</option>`}
-                  </select>
-                </div>
-              </div>
-
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
-                <div class="form-group">
-                  <label style="font-size:0.75rem; font-weight:600;">AI Agent Co-worker</label>
-                  <select id="gwAgent" class="form-select" required>
-                    ${state.agents.map(a => `<option value="${a.id}">${a.name}</option>`).join('')}
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label style="font-size:0.75rem; font-weight:600;">Output Format Required</label>
-                  <select id="gwOutputType" class="form-select" required>
-                    <option value="Generate 5 Facebook posts">Generate 5 Facebook posts</option>
-                    <option value="Generate Instagram carousel copy">Generate Instagram carousel copy</option>
-                    <option value="Generate Canva poster brief">Generate Canva poster brief</option>
-                    <option value="Generate donor impact story">Generate donor impact story</option>
-                    <option value="Generate monthly content calendar">Generate monthly content calendar</option>
-                    <option value="Generate funder update">Generate funder update</option>
-                    <option value="Generate analytics report">Generate analytics report</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
-                <div class="form-group">
-                  <label style="font-size:0.75rem; font-weight:600;">Primary Target Platform</label>
-                  <select id="gwPlatform" class="form-select" required>
-                    <option value="Facebook">Facebook</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="LinkedIn">LinkedIn</option>
-                    <option value="WhatsApp">WhatsApp</option>
-                    <option value="Email newsletter">Email newsletter</option>
-                    <option value="Website">Website</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label style="font-size:0.75rem; font-weight:600;">Tone of Voice</label>
-                  <select id="gwTone" class="form-select" required>
-                    <option value="Grassroots, Encouraging">Grassroots, Encouraging</option>
-                    <option value="Urgent, Empowering">Urgent, Empowering</option>
-                    <option value="Professional, Fact-based">Professional, Fact-based</option>
-                    <option value="Informative, Accessible">Informative, Accessible</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
-                <div class="form-group">
-                  <label style="font-size:0.75rem; font-weight:600;">Source Evidence Document (Inbox)</label>
-                  <select id="gwEvidence" class="form-select" required>
-                    <option value="">-- Choose verified source document --</option>
-                    ${clientEvidence.map(e => `
-                      <option value="${e.id}">${e.name} (${e.verificationStatus})</option>
-                    `).join('')}
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label style="font-size:0.75rem; font-weight:600;">Due Date</label>
-                  <input type="date" id="gwDueDate" class="form-control" value="${new Date(Date.now() + 604800000).toISOString().split('T')[0]}" required />
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label style="font-size:0.75rem; font-weight:600;">Approval Reviewer</label>
-                <input type="text" id="gwApprovalPerson" class="form-control" value="${client.primaryContact || 'Irene K.'}" required />
-              </div>
-
-              <div id="simGenProgress" style="display:none; background:#f1f5f9; padding:0.75rem; border-radius:6px; border:1px solid #e2e8f0; margin-top:0.5rem;">
-                <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:0.25rem;">
-                  <strong id="simGenStatusText">AI Agent compiling inputs...</strong>
-                  <span id="simGenPercent">0%</span>
-                </div>
-                <div style="background:#cbd5e1; height:6px; border-radius:3px; overflow:hidden;">
-                  <div id="simGenProgressBar" style="background:var(--primary-color); height:100%; width:0%; transition:width 0.1s linear;"></div>
-                </div>
-              </div>
-
-              <button type="submit" class="btn btn-primary mt-2" style="width:100%;">🚀 Generate Content Draft</button>
-            </form>
-          </div>
-
-        </div>
-
-        <!-- Right Side Column -->
-        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-          
-          <!-- 4. Evidence Inbox (Section #3) -->
-          <div class="card evidence-inbox-card">
-            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; display:flex; align-items:center; justify-content:space-between;">
-              <span>📥 Evidence Inbox</span>
-              <span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:0.7rem;">${clientEvidence.length} Files Available</span>
-            </h3>
-            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Connect files, audit sheets, and reports to serve as fact-checked source evidence for AI campaigns.</p>
-            
-            <!-- Upload Simulator Area (Section #3) -->
-            <div class="upload-simulator-area" id="uploadSimulatorZone">
-              <span style="font-size: 1.75rem; display:block; margin-bottom:0.25rem;">📄</span>
-              <strong style="font-size: 0.85rem; display:block; color:var(--primary-color);">Click to Sim Upload / Connect Source</strong>
-              <span style="font-size: 0.7rem; color:var(--text-muted);">PDF, Excel, Word, Image, CSV, Email, Link</span>
-              
-              <!-- Simulated progress -->
-              <div class="upload-progress-container" id="inboxUploadProgressContainer">
-                <div class="upload-progress-bar" id="inboxUploadProgressBar"></div>
-              </div>
-            </div>
-
-            <!-- List of Evidence (Section #3 & #6) -->
-            <div class="evidence-list">
-              ${clientEvidence.length === 0 ? `
-                <div style="text-align:center; padding:2rem; color:var(--text-muted); font-size:0.85rem;">
-                  No evidence uploaded for this client yet. Click above to simulate a new upload.
-                </div>
-              ` : clientEvidence.map(e => `
-                <div class="evidence-item">
-                  <div class="evidence-item-header">
-                    <span style="display:flex; align-items:center; gap:0.35rem;">
-                      ${getFileIcon(e.sourceType)} 
-                      <a href="/${e.name}" target="_blank" style="text-decoration: underline; color: var(--primary-color); font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 180px;" title="Click to view file: ${e.name}">${e.name}</a>
-                      ${e.isDemoData ? '<span class="demo-badge">Demo Data</span>' : ''}
-                    </span>
-                    <span class="badge-status ${e.verificationStatus.toLowerCase().replace(' ', '-')}">
-                      ${e.verificationStatus}
-                    </span>
-                  </div>
-                  
-                  <div class="evidence-item-excerpt" title="Factual Excerpt">
-                    "${e.textExcerpt || 'No excerpt available.'}"
-                  </div>
-
-                  <div class="evidence-item-meta">
-                    <span>📁 <strong>Project:</strong> ${e.project || 'General'}</span>
-                    <span>📢 <strong>Campaign:</strong> ${e.campaign || 'None'}</span>
-                    <span>📅 <strong>Uploaded:</strong> ${e.dateUploaded}</span>
-                  </div>
-
-                  <!-- Verification triggers -->
-                  ${e.verificationStatus !== 'Verified' ? `
-                    <div style="display:flex; justify-content:flex-end; margin-top:0.5rem; gap:0.4rem; border-top:1px solid #f1f5f9; padding-top:0.4rem;">
-                      <button class="btn btn-xs btn-outline verify-evidence-btn" data-ev-id="${e.id}" style="color:var(--success-color); border-color:var(--success-color); font-size:0.65rem; padding:0.15rem 0.4rem;">Verify Source</button>
-                    </div>
-                  ` : ''}
-                </div>
-              `).join('')}
-            </div>
-          </div>
-
-          <!-- 5. Approval Workflow Queue (Section #7) -->
-          <div class="card approval-queue-card">
-            <h3 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; display:flex; align-items:center; justify-content:space-between;">
-              <span>⏳ Approval Queue</span>
-              <span class="badge" style="background:#fef3c7; color:#b45309; font-size:0.7rem;">${clientOutputs.length} Outputs</span>
-            </h3>
-            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Track generated outputs through approval stages prior to publishing. Metrics are locked until client approved.</p>
-
-            <div class="approval-list">
-              ${clientOutputs.length === 0 ? `
-                <div style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.85rem;">
-                  No generated drafts found. Setup parameters and hit "Generate Content Draft" to initiate.
-                </div>
-              ` : clientOutputs.map(o => {
-                let statusStep = 1;
-                if (o.approvalStatus === 'Internal Review') statusStep = 2;
-                else if (o.approvalStatus === 'Sent to Client') statusStep = 3;
-                else if (o.approvalStatus === 'Client Approved') statusStep = 4;
-                else if (o.approvalStatus === 'Scheduled') statusStep = 5;
-                else if (o.approvalStatus === 'Published') statusStep = 6;
-
-                return `
-                  <div class="approval-item">
-                    <div class="approval-item-header">
-                      <div>
-                        <strong style="font-size:0.85rem; color:var(--primary-color);">${getAgentNameById(o.agentId)}</strong>
-                        <span style="font-size:0.75rem; color:var(--text-muted); margin-left:0.25rem;">➔ ${o.outputType}</span>
-                        ${o.isDemoData ? '<span class="demo-badge" style="margin-left:0.4rem;">Demo Data</span>' : ''}
-                      </div>
-                      <span class="badge-status ${getApprovalStatusClass(o.approvalStatus)}">${o.approvalStatus}</span>
-                    </div>
-
-                    <!-- Workflow Stage Map Visual -->
-                    <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text-muted); margin:0.5rem 0 0.75rem 0; padding:0.25rem; background:#f8fafc; border-radius:4px; border:1px solid #f1f5f9;">
-                      <span style="font-weight:${statusStep === 1 ? '700' : '400'}; color:${statusStep >= 1 ? 'var(--primary-color)' : 'inherit'};">1. Draft</span>
-                      <span>➔</span>
-                      <span style="font-weight:${statusStep === 2 ? '700' : '400'}; color:${statusStep >= 2 ? 'var(--primary-color)' : 'inherit'};">2. Internal</span>
-                      <span>➔</span>
-                      <span style="font-weight:${statusStep === 3 ? '700' : '400'}; color:${statusStep >= 3 ? 'var(--primary-color)' : 'inherit'};">3. Sent</span>
-                      <span>➔</span>
-                      <span style="font-weight:${statusStep === 4 ? '700' : '400'}; color:${statusStep >= 4 ? 'var(--primary-color)' : 'inherit'};">4. Approved</span>
-                      <span>➔</span>
-                      <span style="font-weight:${statusStep === 5 ? '700' : '400'}; color:${statusStep >= 5 ? 'var(--primary-color)' : 'inherit'};">5. Scheduled</span>
-                      <span>➔</span>
-                      <span style="font-weight:${statusStep === 6 ? '700' : '400'}; color:${statusStep >= 6 ? 'var(--primary-color)' : 'inherit'};">6. Published</span>
-                    </div>
-
-                    <!-- Edit Content Block -->
-                    <div class="approval-content-box" id="contentBox-${o.id}">${o.content}</div>
-                    <textarea class="form-control" id="contentEdit-${o.id}" style="display:none; font-size:0.8rem; margin-bottom:0.75rem; height:120px; font-family:inherit; border-left: 3px solid var(--primary-color);">${o.content}</textarea>
-
-                    <!-- Source Evidence Trace Panel (Section #6) -->
-                    <div class="evidence-trace-box">
-                      <div class="evidence-trace-header">
-                        <span>🔍 EVIDENCE TRACE [Score: ${o.confidenceScore}%]</span>
-                        <span class="text-${o.verificationStatus === 'Verified' ? 'green' : 'yellow'}">${o.verificationStatus} Evidence</span>
-                      </div>
-                      <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:0.25rem;">
-                        <strong>Source:</strong> ${o.sourceDocName || 'None'} (${o.sourceDocType || 'Unknown'}) | Uploaded: ${o.sourceDocUploadDate || 'N/A'}
-                      </div>
-                      <div class="evidence-trace-quote">
-                        "${o.sourceEvidence || 'Evidence missing. Please upload or verify source information.'}"
-                      </div>
-                      <!-- Guard message warning against invention of facts -->
-                      <div style="font-size:0.65rem; color:#b45309; font-weight:600; margin-top:0.25rem; display:flex; align-items:center; gap:0.2rem;">
-                        ⚠️ Strictly evidence-based. No facts, numbers, dates or campaign results were invented by AI.
-                      </div>
-                    </div>
-
-                    <!-- Approval Buttons (Section #7) -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f1f5f9; padding-top:0.75rem; flex-wrap:wrap; gap:0.5rem;">
-                      <div style="display:flex; gap:0.4rem;">
-                        <button class="btn btn-xs btn-outline edit-output-btn" data-out-id="${o.id}">✏️ Edit</button>
-                        <button class="btn btn-xs btn-outline save-output-btn" data-out-id="${o.id}" style="display:none; background:var(--success-color); color:white; border-color:var(--success-color);">💾 Save</button>
-                        <button class="btn btn-xs btn-outline regen-output-btn" data-out-id="${o.id}">🔄 Regenerate</button>
-                      </div>
-                      <div style="display:flex; gap:0.4rem; justify-content:flex-end;">
-                        ${o.approvalStatus === 'Draft' ? `
-                          <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Internal Review">Approve Internal</button>
-                        ` : ''}
-                        ${o.approvalStatus === 'Internal Review' ? `
-                          <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Sent to Client">Send to Client</button>
-                        ` : ''}
-                        ${o.approvalStatus === 'Sent to Client' ? `
-                          <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Client Approved">Client Approved</button>
-                        ` : ''}
-                        ${o.approvalStatus === 'Client Approved' ? `
-                          <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Scheduled">Schedule Post</button>
-                        ` : ''}
-                        ${o.approvalStatus === 'Scheduled' ? `
-                          <button class="btn btn-xs btn-primary approve-stage-btn" data-out-id="${o.id}" data-target-status="Published">Publish Now</button>
-                        ` : ''}
-                        <button class="btn btn-xs btn-outline export-output-btn" data-out-id="${o.id}">📤 Export</button>
-                      </div>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          </div>
-
-        </div>
-
+      <!-- Tab Panel Content -->
+      <div class="cr-tab-panel">
+        ${renderActiveTabContent(client, briefStatus, clientEvidence, clientOutputs)}
       </div>
     </div>
   `;
 
-  // --- EVENT BINDINGS ---
-
-  // Dropdown client switcher
-  const crClientSelector = document.getElementById('crClientSelector');
-  if (crClientSelector) {
-    crClientSelector.addEventListener('change', (e) => {
-      selectClient(e.target.value);
-    });
-  }
-
-  // Edit brief modal trigger
-  const editBriefBtn = document.getElementById('editBriefBtn');
-  if (editBriefBtn) {
-    editBriefBtn.addEventListener('click', () => {
-      openEditBriefModal(client.id);
-    });
-  }
-
-  // Complete Brief shortcut on agent cards
-  container.querySelectorAll('.edit-brief-shortcut').forEach(btn => {
+  // Bind tab navigation click events
+  container.querySelectorAll('.cr-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      openEditBriefModal(client.id);
+      crActiveTab = btn.getAttribute('data-tab');
+      // If switching to create-work, reset wizard step to 1
+      if (crActiveTab === 'create-work') {
+        crWizardStep = 1;
+      }
+      notify();
     });
   });
 
-  // Configure & Run shortcut from agent cards to fill the work generator form
-  container.querySelectorAll('.run-agent-trigger-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const agentId = btn.getAttribute('data-agent-id');
-      const gwAgent = document.getElementById('gwAgent');
-      if (gwAgent) {
-        gwAgent.value = agentId;
-        gwAgent.dispatchEvent(new Event('change'));
+  // Bind top header select change
+  const crClientSelect = document.getElementById('crClientSelect');
+  if (crClientSelect) {
+    crClientSelect.addEventListener('change', (e) => {
+      const cid = e.target.value;
+      crWizardInputs.clientId = cid;
+      const matchedClient = state.clients.find(c => c.id === cid);
+      if (matchedClient) {
+        const activeCampaigns = state.campaigns.filter(c => c.client === cid);
+        crWizardInputs.campaignName = activeCampaigns.length > 0 ? activeCampaigns[0].name : (matchedClient.campaignName || 'General');
+        crWizardInputs.approvalPerson = matchedClient.primaryContact || 'Irene K.';
+        crWizardInputs.agentId = '';
+        crWizardInputs.outputType = '';
+        crWizardInputs.evidenceId = '';
       }
-      const gwPanel = document.getElementById('generateWorkPanel');
-      if (gwPanel) {
-        gwPanel.scrollIntoView({ behavior: 'smooth' });
-        gwPanel.style.border = '2px solid var(--primary-color)';
-        setTimeout(() => { gwPanel.style.border = '1px solid var(--border-color)'; }, 1500);
-      }
-    });
-  });
-
-  // Verify evidence source manually from inbox
-  container.querySelectorAll('.verify-evidence-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const evId = btn.getAttribute('data-ev-id');
-      const evItem = state.evidence.find(e => e.id === evId);
-      if (evItem) {
-        evItem.verificationStatus = 'Verified';
-        alert(`Source evidence "${evItem.name}" is now marked as Verified and is eligible for final content generation!`);
-        notify();
-      }
-    });
-  });
-
-  // Upload Evidence simulation trigger
-  const uploadSimulatorZone = document.getElementById('uploadSimulatorZone');
-  if (uploadSimulatorZone) {
-    uploadSimulatorZone.addEventListener('click', () => {
-      openSimulateUploadModal(client.id);
+      selectClient(cid);
     });
   }
 
-  // Work Generator form submission handler
-  const generateWorkForm = document.getElementById('generateWorkForm');
-  if (generateWorkForm) {
-    generateWorkForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      
-      const agentId = document.getElementById('gwAgent').value;
-      const campaignName = document.getElementById('gwCampaign').value;
-      const outputType = document.getElementById('gwOutputType').value;
-      const platform = document.getElementById('gwPlatform').value;
-      const tone = document.getElementById('gwTone').value;
-      const evId = document.getElementById('gwEvidence').value;
-      const dueDate = document.getElementById('gwDueDate').value;
-      const approvalPerson = document.getElementById('gwApprovalPerson').value;
-
-      // Validate checklist readiness for selected agent
-      const agent = state.agents.find(a => a.id === agentId);
-      let checklistMet = true;
-      
-      if (agentId === 'storytelling') {
-        checklistMet = !!client.campaignName && !!client.campaignGoal && (!!client.evidenceReports || !!client.evidenceResearch) && !!client.targetReach && !!client.toneOfVoice && !!client.campaignMessage && (!!client.evidencePhotos || !!client.evidenceVideos);
-      } else if (agentId === 'socialmedia') {
-        checklistMet = !!client.name && !!client.website && !!client.campaignGoal && !!client.targetReach && !!client.toneOfVoice && (!!client.contentPlatforms || !!client.campaignPlatforms) && clientEvidence.length > 0 && !!client.primaryContact;
-      } else if (agentId === 'canva-brief') {
-        checklistMet = !!client.campaignName && !!client.campaignMessage && !!client.contentPlatforms && !!client.logo && !!client.brandColours && !!client.evidencePhotos && !!client.posterSizes && !!client.campaignCta && (!!client.phone || !!client.email);
-      } else if (agentId === 'calendar') {
-        checklistMet = !!client.campaignStart && !!client.campaignEnd && !!client.campaignFrequency && !!client.contentPlatforms && !!client.campaignPriority && !!client.reportingDeadlines;
-      } else if (agentId === 'reporting') {
-        checklistMet = !!client.requiredImpactMetrics && !!client.evidencePhotos && !!client.evidenceRegisters && (!!client.evidenceSurveys || clientEvidence.some(ev => ev.contentType === 'Survey results')) && !!client.requiredDonorOutputs && !!client.reportingDeadlines;
-      } else if (agentId === 'funding-comm') {
-        checklistMet = !!client.currentFunders && !!client.requiredImpactMetrics && clientEvidence.length > 0 && !!client.campaignGoal && !!client.grantNames;
-      }
-
-      if (!checklistMet) {
-        alert(`Missing information required before generating final content. Please check the Agent Readiness Checklist for ${agent ? agent.name : 'the agent'} and complete the client brief.`);
-        return;
-      }
-
-      if (!evId) {
-        alert('Please select a source evidence document to feed the factual context of this generation.');
-        return;
-      }
-
-      const selectedEv = state.evidence.find(ev => ev.id === evId);
-      if (!selectedEv) return;
-
-      // Gate unverified evidence (Section #3 & #6)
-      if (selectedEv.verificationStatus === 'Unverified') {
-        const approveUnverified = confirm(`⚠️ Warning: Selected source evidence is currently Unverified. Generating content using unverified statistics or facts is against accuracy rules.\n\nDo you want to proceed with unverified evidence anyway?`);
-        if (!approveUnverified) {
-          return;
-        }
-      }
-
-      // Start simulation progress loader
-      const progressBox = document.getElementById('simGenProgress');
-      const progressBar = document.getElementById('simGenProgressBar');
-      const progressText = document.getElementById('simGenStatusText');
-      const progressPercent = document.getElementById('simGenPercent');
-      
-      progressBox.style.display = 'block';
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += 10;
-        progressBar.style.width = `${progress}%`;
-        progressPercent.textContent = `${progress}%`;
-        
-        if (progress === 20) progressText.textContent = `Feeding source document "${selectedEv.name}" context...`;
-        else if (progress === 50) progressText.textContent = `Applying target brand voice "${client.toneOfVoice}"...`;
-        else if (progress === 80) progressText.textContent = `Verifying factual alignment against source excerpt...`;
-        
-        if (progress >= 100) {
-          clearInterval(interval);
-          
-          const generatedContent = generateSimulatedAiOutputContent(agentId, client, campaignName, selectedEv.textExcerpt, tone, outputType, platform);
-          
-          const matchedCampaign = state.campaigns.find(c => c.name === campaignName && c.client === client.id);
-          addAiOutput({
-            clientId: client.id,
-            client_id: client.id,
-            campaignName: campaignName,
-            campaignId: matchedCampaign ? matchedCampaign.id : 'cmp_gen',
-            campaign_id: matchedCampaign ? matchedCampaign.id : 'cmp_gen',
-            projectId: selectedEv.project || 'General',
-            project_id: selectedEv.project || 'General',
-            evidenceId: selectedEv.id,
-            evidence_id: selectedEv.id,
-            agentId: agentId,
-            agent_id: agentId,
-            approvalStatus: 'Draft',
-            approval_status: 'Draft',
-            createdAt: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            outputType: outputType,
-            platform: platform,
-            tone: tone,
-            dueDate: dueDate,
-            sourceEvidence: selectedEv.textExcerpt,
-            sourceDocName: selectedEv.name,
-            sourceDocType: selectedEv.sourceType,
-            sourceDocUploadDate: selectedEv.dateUploaded,
-            confidenceScore: Math.floor(Math.random() * 8) + 92, // 92-99%
-            verificationStatus: selectedEv.verificationStatus,
-            content: generatedContent,
-            approvalPerson: approvalPerson
-          });
-
-          // Log in terminal activity logs in state
-          state.agentActivityLogs.unshift({
-            timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-            agent: agent ? agent.name : 'AI Agent',
-            client: client.name,
-            message: `Completed execution for campaign "${campaignName}". Generated ${outputType} successfully.`,
-            status: 'success'
-          });
-
-          // Boost tasks completed count
-          if (agent) {
-            agent.tasksCompleted += 1;
-            agent.lastRun = 'Just now';
-            agent.status = 'Waiting';
-          }
-
-          progressBox.style.display = 'none';
-          progressBar.style.width = '0%';
-          alert(`🎉 Success! ${outputType} has been generated and pushed to the Approval Queue below.`);
-          notify();
-        }
-      }, 150);
+  // Bind main CTA button "Create New Work"
+  const crCreateWorkCta = document.getElementById('crCreateWorkCta');
+  if (crCreateWorkCta) {
+    crCreateWorkCta.addEventListener('click', () => {
+      crActiveTab = 'create-work';
+      crWizardStep = 1;
+      notify();
     });
   }
+
+  // Bind dynamic actions for active tab
+  bindActiveTabEvents(container, client, briefStatus, clientEvidence, clientOutputs);
 }
 
 
