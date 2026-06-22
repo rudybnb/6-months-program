@@ -1,7 +1,7 @@
 // In-memory application state - Wiped clean for fresh execution
 export const state = {
   currentUserRole: 'admin', // 'admin' or 'client'
-  selectedClientId: '', // No client selected initially
+  selectedClientId: 'groundwork-demo', // Start with demo client selected
   
   // Live Currency Exchange Rate State
   currency: 'GBP', // 'GBP' or 'ZAR'
@@ -9,45 +9,383 @@ export const state = {
   prevGbpToZarRate: 22.85,
   rateChangePercent: 0.0,
 
-  // Clear all NGO clients
-  clients: [],
+  // Pre-configured NGO clients
+  clients: [
+    {
+      id: 'groundwork-demo',
+      name: 'groundWork SA (Demo)',
+      isDemo: true,
+      logo: '🌱',
+      primaryContact: 'Bobby Peek',
+      keyContact: 'Bobby Peek',
+      email: 'bobby@groundwork.org.za',
+      phone: '', // 1. Missing
+      website: 'www.groundwork.org.za',
+      country: 'South Africa',
+      sector: 'Environmental Justice',
+      mission: 'To improve the quality of life of vulnerable people through environmental justice advocacy.',
+      mainCause: 'Air Quality & Environmental Health',
+      shortDesc: 'A non-profit environmental justice service and developmental organization working in South Africa.',
+      mainServices: 'Community air monitoring, legal advocacy, pollution tracking',
+      communities: 'Durban South, Mpumalanga Highveld, Vaal Triangle',
+      fundingPartners: 'Sida, European Union, Clean Air Fund',
+      activeProjectsCount: 3,
+      reportsDueCount: 1,
+      monthlyFee: 2500,
+      contractValue: 30000,
+      startDate: '2026-01-10',
+      renewalDate: '2027-01-10',
+      lastActivity: 'Active monitoring logs updated',
+      nextDeadline: '2026-07-15',
+      notes: 'High priority client focusing on industrial fence-line communities.',
+      healthScore: 92,
+      complianceScore: 95,
+      projectCompletionScore: 90,
 
-  // CEO Command Center Metrics - Cleared
-  ceoMetrics: {
-    businessHealthScore: 0,
-    clientHealthScore: 0,
-    revenueScore: 0,
-    reportingComplianceScore: 0,
-    projectCompletionScore: 0,
-    agentPerformanceScore: 0,
-    overallAiRecommendation: 'Awaiting evidence upload. Please add an NGO client to start tracking impact and performance metrics.'
-  },
+      // Brand Identity
+      brandColours: '#15803d, #1e3a8a',
+      fonts: 'Inter, Outfit',
+      toneOfVoice: 'Empowering, Urgent, Evidence-based',
+      writingStyle: 'Professional, community-centric, factual',
+      wordsToUse: 'Environmental justice, community monitoring, grassroots, accountability',
+      wordsToAvoid: '', // 2. Missing
+      approvedHashtags: '#EnvironmentalJustice, #CleanAirSA, #GrassrootsAction',
+      canvaTemplates: '', // 3. Missing
+      posterExamples: '', // 4. Missing
+      socialHandles: '@groundworksa',
 
-  // Campaigns Section - Cleared
-  campaigns: [],
+      // Target Audience
+      targetReach: 'Local residents in high-pollution industrial zones, climate donors, policy makers',
+      audienceCommunity: 'Fence-line communities living near refineries and coal plants',
+      audienceDonor: 'International green foundations and clean air funds',
+      audienceGovernment: 'Department of Forestry, Fisheries and the Environment',
+      audienceYouth: 'School climate advocacy groups in Durban',
+      audienceMedia: 'National environmental journalists and local radio',
+      ageGroups: 'All age groups, with youth emphasis',
+      locations: 'South Africa (Durban, Mpumalanga, Vaal)',
+      languages: '', // 5. Missing
+      culturalConsiderations: '', // 6. Missing
 
-  // Tasks (Today's Priorities) - Cleared
-  tasks: [],
+      // Campaign Info
+      campaignName: 'Clean Air Durban',
+      campaignGoal: 'Deploy 15 PM2.5 air sensors in Southern Durban schools',
+      campaignStart: '2026-05-01',
+      campaignEnd: '2026-10-31',
+      campaignMessage: 'Every child has a right to breathe clean air. Monitor to protect.',
+      campaignFacts: 'Southern Durban residents suffer from disproportionately high asthma rates due to refinery proximity.',
+      keyFacts: 'Southern Durban residents suffer from disproportionately high asthma rates due to refinery proximity.',
+      campaignCta: 'Support Durban schools by sponsoring a community air monitor.',
+      campaignPlatforms: 'LinkedIn, Facebook, WhatsApp',
+      campaignFrequency: '3 posts per week',
+      campaignPriority: 'High',
 
-  // Content Module Pipeline - Cleared
-  content: [],
+      // Project Evidence
+      evidenceReports: 'Durban South Air Quality Audit 2025',
+      evidenceResearch: 'Asthma Prevalence Study in Fence-line Schools',
+      evidencePhotos: 'Sensor deployment photo folder',
+      evidenceVideos: 'Community workshop highlight video',
+      evidenceNotes: 'Southern Durban Community Workshop Minutes May 2026',
+      evidenceRegisters: 'Attendance register Durban sensor training',
+      evidenceSurveys: '', // 7. Missing
+      evidenceFeedback: 'Resident quotes on refinery flare emission incidents',
+      evidenceCaseStudies: 'Case Study: School Sensor Installation Vukuzakhe High',
+      evidenceTestimonials: '', // 8. Missing
+      evidenceNews: '', // 9. Missing
+      evidenceFunderDocs: 'Clean Air Fund Strategic Alignment Guidelines',
 
-  // Reports Center - Cleared
-  reports: [],
+      // Donor Info
+      currentFunders: 'Clean Air Fund, Sida',
+      grantNames: 'Strategic Air Quality Partner Funding',
+      reportingDeadlines: 'Quarterly reports due on the 15th post-quarter',
+      requiredDonorOutputs: 'Monthly progress email, raw sensor log csv, case study',
+      donorLogoRequirements: '', // 10. Missing
+      funderCommunicationRules: 'Consultancy logo must be secondary to NGO logo.',
+      requiredImpactMetrics: 'Sensors deployed, students trained, reports sent',
+      requiredEvidence: 'Photo of installation, signed training register',
 
-  // AI Agents Configuration & Metrics - Reset
-  agents: [
-    { id: 'storytelling', name: 'Storytelling Agent', description: 'Turns reports, notes and updates into engaging narrative stories and case studies.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
-    { id: 'socialmedia', name: 'Social Media Agent', description: 'Creates, schedules, and monitors multi-platform social media posts & graphics recommendations.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
-    { id: 'reporting', name: 'Donor Reporting Agent', description: 'Compiles project data, impact stats, and updates into beautiful, donor-ready reports.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
-    { id: 'funding', name: 'Funding Agent', description: 'Finds funding grants, tracks matching indices, and generates grant proposal drafts.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
-    { id: 'newsletter', name: 'Newsletter Agent', description: 'Composes stakeholder newsletters, bulletins, and donor updates.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
-    { id: 'analytics', name: 'Analytics Agent', description: 'Aggregates engagement stats, reach metrics, web hits and open rates.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
-    { id: 'planner', name: 'Content Planner Agent', description: 'Manages editorial calendars and aligns posts with campaign timelines.', status: 'Disabled', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' }
+      // Content Requirements
+      contentPlatforms: 'Facebook, LinkedIn, Email Newsletter',
+      contentTarget: '12 social posts, 1 newsletter per month',
+      posterSizes: '', // 11. Missing
+      captionStyle: 'Bold headers, short paragraphs, calls to action',
+      imageStyle: 'Real photos of community advocates and sensor installs',
+      videoStyle: '', // 12. Missing
+      approvalProcess: 'Drafted by AI, internal review by Irene, final client approval via portal',
+      publishingDeadlines: '' // 13. Missing
+    },
+    {
+      id: 'vukani-demo',
+      name: 'Vukani Environmental (Demo)',
+      isDemo: true,
+      logo: '🌀',
+      primaryContact: 'Nomcebo Mabuza',
+      keyContact: 'Nomcebo Mabuza',
+      email: 'nomcebo@vukanienv.org',
+      phone: '+27 11 982 1104',
+      website: 'www.vukanienvironmental.org',
+      country: 'South Africa',
+      sector: 'Waste Management',
+      mission: 'To promote environmental health and recycling co-operatives in townships.',
+      mainCause: 'Township waste management & recycling co-operatives',
+      shortDesc: 'A community organization empowering waste pickers in Soweto.',
+      mainServices: 'Waste picker safety gear, co-operative training, collection hubs',
+      communities: 'Soweto, Alexandra, Tembisa',
+      fundingPartners: 'UNEP, Vukani trust',
+      activeProjectsCount: 1,
+      reportsDueCount: 0,
+      monthlyFee: 1500,
+      contractValue: 18000,
+      startDate: '2026-02-15',
+      renewalDate: '2027-02-15',
+      lastActivity: 'Co-op registers uploaded',
+      nextDeadline: 'None',
+      notes: 'Focus on recycling equipment upgrades and waste picker health guides.',
+      healthScore: 85,
+      complianceScore: 100,
+      projectCompletionScore: 80,
+
+      // Brand Identity
+      brandColours: '#0284c7, #eab308',
+      fonts: 'Roboto, Arial',
+      toneOfVoice: 'Informative, grassroots, encouraging',
+      writingStyle: 'Simple and accessible english and zulu summaries',
+      wordsToUse: 'Co-operative, recycling, waste picker safety',
+      wordsToAvoid: '',
+      approvedHashtags: '',
+      canvaTemplates: '',
+      posterExamples: '',
+      socialHandles: '',
+
+      // Target Audience
+      targetReach: 'Township waste pickers, local councillors, plastic recycling companies',
+      audienceCommunity: 'Local recycling co-operative members in Soweto',
+      audienceDonor: '',
+      audienceGovernment: '',
+      audienceYouth: '',
+      audienceMedia: '',
+      ageGroups: 'Adults aged 18-60',
+      locations: 'Gauteng (Soweto)',
+      languages: '',
+      culturalConsiderations: '',
+
+      // Campaign Info
+      campaignName: 'Soweto Waste Picker Dignity Project',
+      campaignGoal: 'Equip 100 waste pickers with high-visibility jackets and steel-toe boots',
+      campaignStart: '2026-06-01',
+      campaignEnd: '2026-08-31',
+      campaignMessage: 'Waste pickers perform an essential service. Support safety & dignity.',
+      campaignFacts: 'Waste pickers recycle up to 80% of packaging waste in township areas without formal wages.',
+      keyFacts: 'Waste pickers recycle up to 80% of packaging waste in township areas without formal wages.',
+      campaignCta: 'Donate boots or high-visibility gear at our Soweto hub.',
+      campaignPlatforms: 'Facebook, WhatsApp',
+      campaignFrequency: '1 post per week',
+      campaignPriority: 'Medium',
+
+      // Project Evidence
+      evidenceReports: 'Waste Picker Impact Survey Gauteng 2025',
+      evidenceResearch: '',
+      evidencePhotos: '',
+      evidenceVideos: '',
+      evidenceNotes: '',
+      evidenceRegisters: 'Vukani Soweto Co-op Registration List',
+      evidenceSurveys: '',
+      evidenceFeedback: '',
+      evidenceCaseStudies: '',
+      evidenceTestimonials: '',
+      evidenceNews: '',
+      evidenceFunderDocs: '',
+
+      // Donor Info
+      currentFunders: 'UNEP',
+      grantNames: 'Environmental Co-operative Grants',
+      reportingDeadlines: '',
+      requiredDonorOutputs: '',
+      donorLogoRequirements: '',
+      funderCommunicationRules: '',
+      requiredImpactMetrics: '',
+      requiredEvidence: '',
+
+      // Content Requirements
+      contentPlatforms: 'Facebook, WhatsApp',
+      contentTarget: '',
+      posterSizes: '',
+      captionStyle: '',
+      imageStyle: '',
+      videoStyle: '',
+      approvalProcess: '',
+      publishingDeadlines: ''
+    }
   ],
 
-  // Impact Tracker Metrics (Global & Client specific) - Cleared
-  impactMetrics: {},
+  // CEO Command Center Metrics - Seeded
+  ceoMetrics: {
+    businessHealthScore: 88,
+    clientHealthScore: 89,
+    revenueScore: 80,
+    reportingComplianceScore: 97,
+    projectCompletionScore: 92,
+    agentPerformanceScore: 95,
+    overallAiRecommendation: 'Seeded with groundWork SA and Vukani Environmental demo profiles. Check AI Control Room to execute agents.'
+  },
+
+  // Campaigns Section
+  campaigns: [
+    { id: 'cmp1', client: 'groundwork-demo', name: 'Clean Air Durban', goal: 'Deploy 15 sensors', budget: 12000, status: 'Active' },
+    { id: 'cmp2', client: 'vukani-demo', name: 'Soweto Waste Picker Dignity Project', goal: 'Equip 100 pickers', budget: 8500, status: 'Active' }
+  ],
+
+  // Tasks (Today's Priorities)
+  tasks: [
+    { id: 'tsk1', name: 'Review groundWork Sensor Brief', client: 'groundwork-demo', priority: 'High', dueDate: 'Today', status: 'Pending' }
+  ],
+
+  // Content Module Pipeline
+  content: [],
+
+  // Reports Center
+  reports: [
+    { id: 'rep1', name: 'Durban School Air Quality Status Report', client: 'groundwork-demo', donor: 'Clean Air Fund', dueDate: '2026-07-15', status: 'Drafting', completion: 45, agent: 'Donor Reporting Agent' }
+  ],
+
+  // AI Agents Configuration & Metrics - Reset to requested list
+  agents: [
+    { id: 'storytelling', name: 'Storytelling Agent', purpose: 'Turns NGO reports, research and field updates into simple human stories.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
+    { id: 'socialmedia', name: 'Social Media Agent', purpose: 'Creates social media captions and platform-specific content.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
+    { id: 'canva-brief', name: 'Canva Poster Brief Agent', purpose: 'Creates high-quality digital poster briefs for Canva design.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
+    { id: 'calendar', name: 'Content Calendar Agent', purpose: 'Plans monthly and quarterly content calendars.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
+    { id: 'reporting', name: 'Donor Reporting Agent', purpose: 'Turns project work and impact data into funder-ready reports.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
+    { id: 'analytics', name: 'Analytics Agent', purpose: 'Tracks content performance and suggests improvements.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' },
+    { id: 'funding-comm', name: 'Funding Communication Agent', purpose: 'Helps turn NGO impact into donor-facing communication.', status: 'Waiting', lastRun: 'Never', tasksCompleted: 0, successRate: 100, error: 'None', nextTask: 'None' }
+  ],
+
+  // Evidence Inbox Items
+  evidence: [
+    {
+      id: 'ev1',
+      name: 'Durban South Air Quality Audit 2025.pdf',
+      client: 'groundwork-demo',
+      project: 'School Sensor Deployment',
+      campaign: 'Clean Air Durban',
+      contentType: 'Reports',
+      dateUploaded: '2026-06-15',
+      sourceType: 'PDF',
+      verificationStatus: 'Verified',
+      textExcerpt: 'Analysis of Southern Durban schools indicates PM2.5 levels exceed WHO limits by 140% on average during winter months.',
+      isDemoData: true
+    },
+    {
+      id: 'ev2',
+      name: 'Vukuzakhe High Sensor Installation Photo.jpg',
+      client: 'groundwork-demo',
+      project: 'School Sensor Deployment',
+      campaign: 'Clean Air Durban',
+      contentType: 'Photos',
+      dateUploaded: '2026-06-18',
+      sourceType: 'Image',
+      verificationStatus: 'Verified',
+      textExcerpt: 'High resolution photo confirming deployment of PM2.5 monitoring sensor at Vukuzakhe High School entrance.',
+      isDemoData: true
+    },
+    {
+      id: 'ev3',
+      name: 'Soweto Picker Survey Data.xlsx',
+      client: 'vukani-demo',
+      project: 'Waste Picker Dignity',
+      campaign: 'Soweto Waste Picker Dignity Project',
+      contentType: 'Survey results',
+      dateUploaded: '2026-06-20',
+      sourceType: 'Excel',
+      verificationStatus: 'Needs Review',
+      textExcerpt: 'Survey data showing 87 out of 100 Soweto waste pickers operate without basic safety boots or high-visibility clothing.',
+      isDemoData: true
+    }
+  ],
+
+  // AI Generated Outputs Queue
+  aiOutputs: [
+    {
+      id: 'out1',
+      clientId: 'groundwork-demo',
+      campaignName: 'Clean Air Durban',
+      agentId: 'socialmedia',
+      outputType: '5 Facebook posts',
+      platform: 'Facebook',
+      tone: 'Urgent, Empowering',
+      dueDate: '2026-07-01',
+      sourceEvidence: 'Analysis of Southern Durban schools indicates PM2.5 levels exceed WHO limits by 140% on average during winter months.',
+      sourceDocName: 'Durban South Air Quality Audit 2025.pdf',
+      sourceDocType: 'PDF',
+      sourceDocUploadDate: '2026-06-15',
+      confidenceScore: 98,
+      verificationStatus: 'Verified',
+      approvalStatus: 'Draft',
+      content: '🚨 Durban Air Quality Alert! 🚨\n\nDid you know that Southern Durban schools exceed WHO air safety limits by 140% during winter? This is unacceptable for our children\'s health.\n\nWe are deploying 15 new PM2.5 monitors to Durban schools to hold polluters accountable. Knowledge is power. Support our sensor campaign today!\n\n#CleanAirSA #EnvironmentalJustice #BreatheSafe',
+      approvalPerson: 'Irene K.',
+      isDemoData: true
+    },
+    {
+      id: 'out2',
+      clientId: 'vukani-demo',
+      campaignName: 'Soweto Waste Picker Dignity Project',
+      agentId: 'storytelling',
+      outputType: 'Donor impact story',
+      platform: 'Email newsletter',
+      tone: 'Grassroots, Encouraging',
+      dueDate: '2026-07-05',
+      sourceEvidence: 'Survey data showing 87 out of 100 Soweto waste pickers operate without basic safety boots or high-visibility clothing.',
+      sourceDocName: 'Soweto Picker Survey Data.xlsx',
+      sourceDocType: 'Excel',
+      sourceDocUploadDate: '2026-06-20',
+      confidenceScore: 90,
+      verificationStatus: 'Needs Review',
+      approvalStatus: 'Internal Review',
+      content: 'Title: Restoring Dignity to Soweto\'s Waste Heroes\n\nNomcebo Mabuza stands at the gates of the Soweto Recycling Hub, looking at the daily queue of collectors. In a recent survey, Vukani Environmental discovered that 87% of township waste pickers do not own a single pair of safety boots.\n\nNomcebo says: "They perform 80% of our local recycling work, yet they walk the streets in worn-out trainers. It is about dignity." Vukani is raising support to equip 100 collectors with steel-toe boots. Join us in making Soweto clean and safe.',
+      approvalPerson: 'Nomcebo Mabuza',
+      isDemoData: true
+    }
+  ],
+
+  // Impact Tracker Metrics (Global & Client specific)
+  impactMetrics: {
+    'groundwork-demo': {
+      peopleReached: 5200,
+      schoolsReached: 12,
+      learnersReached: 2400,
+      workshopsHeld: 8,
+      communitiesEngaged: 3,
+      volunteers: 45,
+      mediaMentions: 5,
+      reportsSubmitted: 6,
+      fundingSecured: 55000,
+      monthlyTrends: [
+        { month: 'Jan', reached: 800, funding: 10000 },
+        { month: 'Feb', reached: 1500, funding: 10000 },
+        { month: 'Mar', reached: 2300, funding: 15000 },
+        { month: 'Apr', reached: 3100, funding: 15000 },
+        { month: 'May', reached: 4200, funding: 20000 },
+        { month: 'Jun', reached: 5200, funding: 55000 }
+      ]
+    },
+    'vukani-demo': {
+      peopleReached: 1200,
+      schoolsReached: 0,
+      learnersReached: 0,
+      workshopsHeld: 4,
+      communitiesEngaged: 1,
+      volunteers: 18,
+      mediaMentions: 1,
+      reportsSubmitted: 2,
+      fundingSecured: 15000,
+      monthlyTrends: [
+        { month: 'Jan', reached: 200, funding: 5000 },
+        { month: 'Feb', reached: 400, funding: 5000 },
+        { month: 'Mar', reached: 600, funding: 10000 },
+        { month: 'Apr', reached: 800, funding: 10000 },
+        { month: 'May', reached: 1000, funding: 15000 },
+        { month: 'Jun', reached: 1200, funding: 15000 }
+      ]
+    }
+  },
 
   // Global Funding Opportunities Database (Left intact so AI Matching works for new clients)
   fundingOpportunities: [
@@ -559,5 +897,135 @@ export function addFundingOpportunity(opp) {
   
   state.fundingOpportunities.unshift(newOpp);
   notify();
+}
+
+export function calculateBriefCompletion(client) {
+  if (!client) return { score: 0, status: 'Red', statusText: 'Not Enough Information', missing: {} };
+  
+  const fields = {
+    ngoProfile: {
+      name: 'Organisation name', website: 'Website', country: 'Country', sector: 'Sector', 
+      mission: 'Mission statement', mainCause: 'Main cause', shortDesc: 'Short description of the NGO', 
+      mainServices: 'Main services or campaigns', communities: 'Communities they support', 
+      keyContact: 'Key contact person', email: 'Contact email', phone: 'Contact phone number'
+    },
+    brandIdentity: {
+      logo: 'Logo upload', brandColours: 'Brand colours', fonts: 'Fonts', toneOfVoice: 'Tone of voice', 
+      writingStyle: 'Writing style', wordsToUse: 'Words to use', wordsToAvoid: 'Words to avoid', 
+      approvedHashtags: 'Approved hashtags', canvaTemplates: 'Existing Canva templates', 
+      posterExamples: 'Existing poster examples', socialHandles: 'Social media handles'
+    },
+    targetAudience: {
+      targetReach: 'Who the NGO wants to reach', audienceCommunity: 'Community audience', 
+      audienceDonor: 'Donor audience', audienceGovernment: 'Government audience', 
+      audienceYouth: 'Youth audience', audienceMedia: 'Media audience', 
+      ageGroups: 'Age groups', locations: 'Locations', languages: 'Languages required', 
+      culturalConsiderations: 'Cultural considerations'
+    },
+    campaignInfo: {
+      campaignName: 'Campaign name', campaignGoal: 'Campaign goal', campaignStart: 'Campaign start date', 
+      campaignEnd: 'Campaign end date', campaignMessage: 'Main message', keyFacts: 'Key facts', 
+      campaignCta: 'Call to action', campaignPlatforms: 'Target platforms', 
+      campaignFrequency: 'Required posting frequency', campaignPriority: 'Campaign priority'
+    },
+    projectEvidence: {
+      evidenceReports: 'Reports', evidenceResearch: 'Research documents', evidencePhotos: 'Photos', 
+      evidenceVideos: 'Videos', evidenceNotes: 'Workshop notes', evidenceRegisters: 'Attendance registers', 
+      evidenceSurveys: 'Survey results', evidenceFeedback: 'Community feedback', 
+      evidenceCaseStudies: 'Case studies', evidenceTestimonials: 'Testimonials', 
+      evidenceNews: 'News articles', evidenceFunderDocs: 'Funder documents'
+    },
+    donorInfo: {
+      currentFunders: 'Current funders', grantNames: 'Grant names', reportingDeadlines: 'Reporting deadlines', 
+      requiredDonorOutputs: 'Required donor outputs', donorLogoRequirements: 'Donor logo requirements', 
+      funderCommunicationRules: 'Funder communication rules', requiredImpactMetrics: 'Required impact metrics', 
+      requiredEvidence: 'Required evidence'
+    },
+    contentRequirements: {
+      contentPlatforms: 'Platforms to create content for', contentTarget: 'Monthly content target', 
+      posterSizes: 'Poster sizes required', captionStyle: 'Caption style', 
+      imageStyle: 'Image style', videoStyle: 'Video style', 
+      approvalProcess: 'Approval process', publishingDeadlines: 'Publishing deadlines'
+    }
+  };
+
+  let totalFields = 71;
+  let filledCount = 0;
+  const missing = {
+    ngoProfile: [], brandIdentity: [], targetAudience: [], campaignInfo: [], 
+    projectEvidence: [], donorInfo: [], contentRequirements: []
+  };
+
+  for (const section in fields) {
+    for (const field in fields[section]) {
+      const val = client[field];
+      if (val !== undefined && val !== null && val !== '' && (Array.isArray(val) ? val.length > 0 : true)) {
+        filledCount++;
+      } else {
+        missing[section].push(fields[section][field]);
+      }
+    }
+  }
+
+  const score = Math.round((filledCount / totalFields) * 100);
+  let status = 'Red';
+  let statusText = 'Not Enough Information';
+  if (score >= 80) {
+    status = 'Green';
+    statusText = 'Ready to Generate';
+  } else if (score >= 40) {
+    status = 'Yellow';
+    statusText = 'Missing Important Information';
+  }
+
+  return { score, status, statusText, missing };
+}
+
+export function addEvidence(item) {
+  state.evidence.unshift({
+    id: 'ev' + Math.floor(Math.random() * 10000000),
+    dateUploaded: new Date().toISOString().split('T')[0],
+    verificationStatus: item.verificationStatus || 'Unverified',
+    isDemoData: false,
+    ...item
+  });
+  notify();
+}
+
+export function addAiOutput(output) {
+  state.aiOutputs.unshift({
+    id: 'out' + Math.floor(Math.random() * 10000000),
+    approvalStatus: 'Draft',
+    isDemoData: false,
+    ...output
+  });
+  notify();
+}
+
+export function updateAiOutputStatus(id, newStatus) {
+  const out = state.aiOutputs.find(o => o.id === id);
+  if (out) {
+    out.approvalStatus = newStatus;
+    
+    // If output is published, add to content board or trigger stats boost
+    if (newStatus === 'Published') {
+      const client = state.clients.find(c => c.id === out.clientId);
+      if (client && state.impactMetrics[client.id]) {
+        state.impactMetrics[client.id].peopleReached += Math.floor(Math.random() * 300) + 150;
+        state.impactMetrics[client.id].mediaMentions += Math.random() > 0.7 ? 1 : 0;
+      }
+    }
+    notify();
+  }
+}
+
+export function updateClientBrief(clientId, briefData) {
+  const client = state.clients.find(c => c.id === clientId);
+  if (client) {
+    Object.assign(client, briefData);
+    if (briefData.keyContact) client.primaryContact = briefData.keyContact;
+    if (briefData.keyFacts) client.campaignFacts = briefData.keyFacts;
+    notify();
+  }
 }
 
