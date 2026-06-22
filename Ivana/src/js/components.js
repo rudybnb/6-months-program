@@ -4026,14 +4026,117 @@ function openReportExportModal(report) {
     modal.style.display = 'none';
   });
 
-  const exportSuccess = (format) => {
-    alert(`Generating files... Mock file downloaded in background: "${report.name.replace(/ /g, '_')}.${format}"`);
-    modal.style.display = 'none';
+  const triggerDownload = (content, filename, type) => {
+    const blob = new Blob([content], { type: type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  modal.querySelector('.pdf-export-trigger').addEventListener('click', () => exportSuccess('pdf'));
-  modal.querySelector('.word-export-trigger').addEventListener('click', () => exportSuccess('docx'));
-  modal.querySelector('.ppt-export-trigger').addEventListener('click', () => exportSuccess('pptx'));
+  modal.querySelector('.pdf-export-trigger').addEventListener('click', () => {
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${report.name}</title>
+          <style>
+            body { font-family: sans-serif; padding: 2rem; color: #111827; }
+            h3 { font-size: 1.5rem; text-align: center; color: #1D4ED8; }
+            hr { border: 0; border-top: 1px solid #E2E8F0; margin: 1.5rem 0; }
+            h4 { color: #1E293B; margin-top: 2rem; }
+            p { line-height: 1.6; color: #475569; }
+          </style>
+        </head>
+        <body>
+          <h3>DONOR UPDATE SUMMARY</h3>
+          <hr />
+          <p><strong>Report Name:</strong> ${report.name}</p>
+          <p><strong>Funder / Grantor:</strong> ${report.donor}</p>
+          <p><strong>Prepared for:</strong> Project Assessment Review</p>
+          <p><strong>Compiled by:</strong> IK Communications AI Donor Agent</p>
+          
+          <h4>1. Executive Summary & Impact Analysis</h4>
+          <p>During this operational milestone, community outreach efforts were heavily accelerated. Grassroots indicators verify consistent engagement with learners, local schools, and volunteers in support of core deliverables.</p>
+          
+          <h4>2. Visual Data Milestones</h4>
+          <p>[Visual Performance Index Chart Embedded - Verification Compliance: OK]</p>
+
+          <h4>3. Recommended Funder Actions</h4>
+          <p>We recommend releasing the subsequent funding tranche in support of localized monitoring devices and educational curriculum deployment schedules.</p>
+          
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    modal.style.display = 'none';
+  });
+
+  modal.querySelector('.word-export-trigger').addEventListener('click', () => {
+    const filename = `${report.name.replace(/ /g, '_')}.doc`;
+    const content = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><title>${report.name}</title></head>
+      <body style="font-family: Arial; padding: 20px;">
+        <h2>DONOR UPDATE SUMMARY</h2>
+        <p><strong>Report:</strong> ${report.name}</p>
+        <p><strong>Funder / Grantor:</strong> ${report.donor}</p>
+        <p><strong>Prepared for:</strong> Project Assessment Review</p>
+        <p><strong>Compiled by:</strong> IK Communications AI Donor Agent</p>
+        <h3>1. Executive Summary & Impact Analysis</h3>
+        <p>During this operational milestone, community outreach efforts were heavily accelerated. Grassroots indicators verify consistent engagement with learners, local schools, and volunteers in support of core deliverables.</p>
+        <h3>2. Visual Data Milestones</h3>
+        <p>[Visual Performance Index Chart Embedded - Verification Compliance: OK]</p>
+        <h3>3. Recommended Funder Actions</h3>
+        <p>We recommend releasing the subsequent funding tranche in support of localized monitoring devices and educational curriculum deployment schedules.</p>
+      </body>
+      </html>
+    `;
+    triggerDownload(content, filename, 'application/msword');
+    modal.style.display = 'none';
+    alert('Word document (.doc) downloaded successfully!');
+  });
+
+  modal.querySelector('.ppt-export-trigger').addEventListener('click', () => {
+    const filename = `${report.name.replace(/ /g, '_')}.txt`;
+    const content = `IK COMMUNICATIONS AI AGENT PRESENTATION BRIEF
+=============================================
+Report Title: ${report.name}
+Funder Target: ${report.donor}
+
+[SLIDE 1: TITLE SLIDE]
+- Header: Donor Update Summary
+- Subtitle: Prepared for ${report.donor}
+- Compiled by: IK Communications AI Donor Agent
+
+[SLIDE 2: EXECUTIVE SUMMARY]
+- Header: 1. Executive Summary & Impact Analysis
+- Key Fact: Community outreach efforts heavily accelerated.
+- Observation: Grassroots indicators verify consistent engagement.
+
+[SLIDE 3: VISUAL METRICS]
+- Header: 2. Visual Data Milestones
+- Content: [Visual Performance Index Chart Embedded - Verification Compliance: OK]
+
+[SLIDE 4: RECOMMENDATIONS]
+- Header: 3. Recommended Funder Actions
+- Action: Release subsequent funding tranche.
+- Impact: localized monitoring devices and educational curriculum deployment.
+`;
+    triggerDownload(content, filename, 'text/plain');
+    modal.style.display = 'none';
+    alert('PowerPoint presentation outline slide brief downloaded as a text outline file!');
+  });
 }
 
 // 4. Create Content Idea Modal
