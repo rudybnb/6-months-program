@@ -17,6 +17,7 @@ import { renderLineChart, renderBarChart } from './chart.js';
 export function renderAdminDashboard(container) {
   const activeClientsCount = state.clients.filter(c => c.monthlyFee > 0).length;
   const totalRevenue = state.clients.reduce((acc, c) => acc + c.monthlyFee, 0);
+  const activeProjectsCount = state.clients.reduce((acc, c) => acc + (c.activeProjectsCount || 0), 0);
   const reportsDueCount = state.reports.filter(r => r.status !== 'Submitted').length;
   const contentWaitingCount = state.content.filter(c => c.approvalStatus === 'Pending').length;
   const fundingOpportunitiesCount = state.fundingOpportunities.filter(o => o.status === 'New' || o.status === 'Reviewing').length;
@@ -42,7 +43,7 @@ export function renderAdminDashboard(container) {
         <div class="kpi-icon info">📁</div>
         <div class="kpi-info">
           <span class="kpi-label">Active Projects</span>
-          <span class="kpi-value">37 On Track</span>
+          <span class="kpi-value">${activeProjectsCount} Running</span>
         </div>
       </div>
       <div class="kpi-card">
