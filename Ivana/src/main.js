@@ -1,6 +1,7 @@
 import './style.css';
 import { state, subscribe, changeUserRole, selectClient } from './js/state.js';
 import { initRouter } from './js/router.js';
+import { initAssistant } from './js/assistant.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const viewContainer = document.getElementById('mainViewContainer');
@@ -15,6 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize client-side SPA router
   const triggerRouterRefresh = initRouter(viewContainer);
+
+  // Initialize interactive support assistant
+  initAssistant();
 
   // Sync header metadata with state
   const syncHeaderAndNavigation = () => {

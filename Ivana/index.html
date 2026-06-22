@@ -136,6 +136,44 @@
       <!-- Modal elements injected dynamically -->
     </div>
 
+    <!-- Floating Support Chat Bot -->
+    <div class="support-chat-widget" id="supportChatWidget">
+      <button class="chat-toggle-btn" id="chatToggleBtn" title="Ask IK Assistant">
+        <span class="chat-toggle-icon">💬</span>
+        <span class="chat-toggle-text">Help Chat</span>
+      </button>
+      <div class="chat-window" id="chatWindow">
+        <div class="chat-header">
+          <div class="chat-header-title">
+            <span class="chat-bot-avatar">🤖</span>
+            <div>
+              <strong>IK Platform Guide</strong>
+              <span class="chat-bot-status">online</span>
+            </div>
+          </div>
+          <button class="chat-close-btn" id="chatCloseBtn">&times;</button>
+        </div>
+        <div class="chat-body" id="chatBody">
+          <div class="chat-message bot">
+            Hello! I am your <strong>IK Communications Assistant</strong>. 👋
+            <br><br>
+            If you get stuck or have questions about how the platform works, ask me anything! Try asking about:
+            <ul>
+              <li><strong>AI Pipeline</strong></li>
+              <li><strong>Switching Roles</strong></li>
+              <li><strong>Content Board / Kanban</strong></li>
+              <li><strong>Reports Center</strong></li>
+              <li><strong>Funding & Proposals</strong></li>
+            </ul>
+          </div>
+        </div>
+        <div class="chat-footer">
+          <input type="text" id="chatInput" placeholder="Ask a question..." autocomplete="off" />
+          <button id="chatSendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Script bootstrapping -->
     <script type="module" src="/src/main.js"></script>
   </body>
