@@ -3350,7 +3350,7 @@ export function renderAgentsDashboard(container) {
                   <div class="evidence-item-header">
                     <span style="display:flex; align-items:center; gap:0.35rem;">
                       ${getFileIcon(e.sourceType)} 
-                      <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 180px;" title="${e.name}">${e.name}</span>
+                      <a href="/${e.name}" target="_blank" style="text-decoration: underline; color: var(--primary-color); font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 180px;" title="Click to view file: ${e.name}">${e.name}</a>
                       ${e.isDemoData ? '<span class="demo-badge">Demo Data</span>' : ''}
                     </span>
                     <span class="badge-status ${e.verificationStatus.toLowerCase().replace(' ', '-')}">

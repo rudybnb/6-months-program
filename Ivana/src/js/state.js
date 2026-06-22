@@ -261,6 +261,19 @@ export const state = {
   // Evidence Inbox Items
   evidence: [
     {
+      id: 'ev_report_pdf',
+      name: 'groundWork_Social_Media_Performance_Report.pdf',
+      client: 'groundwork-demo',
+      project: 'Social Media Management',
+      campaign: 'Clean Air Durban',
+      contentType: 'Reports',
+      dateUploaded: '2026-06-22',
+      sourceType: 'PDF',
+      verificationStatus: 'Verified',
+      textExcerpt: 'Facebook and Instagram performance review: Facebook reach grew to 4.2K followers and 178.7K views; Instagram views reached 319.2K and interactions reached 15.4K between Nov 2025 and May 2026.',
+      isDemoData: true
+    },
+    {
       id: 'ev1',
       name: 'Durban South Air Quality Audit 2025.pdf',
       client: 'groundwork-demo',
