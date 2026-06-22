@@ -1607,7 +1607,20 @@ export function renderFundingTracker(container) {
               let statusClass = g.status.toLowerCase();
               return `
                 <tr>
-                  <td><strong>${g.funder}</strong></td>
+                  <td>
+                    <strong>${g.funder}</strong>
+                    <div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 0.35rem; display: flex; flex-direction: column; gap: 0.15rem; line-height: 1.3;">
+                      <span style="display: flex; align-items: center; gap: 0.25rem;">
+                        <span>🌐</span> <a href="https://${g.website}" target="_blank" style="color: var(--primary-color); text-decoration: underline;">${g.website}</a>
+                      </span>
+                      <span style="display: flex; align-items: center; gap: 0.25rem;">
+                        <span>✉️</span> <a href="mailto:${g.email}" style="color: inherit;">${g.email}</a>
+                      </span>
+                      <span style="display: flex; align-items: center; gap: 0.25rem;">
+                        <span>📞</span> <span>${g.phone}</span>
+                      </span>
+                    </div>
+                  </td>
                   <td>${g.grantName}</td>
                   <td><strong>£${g.amount.toLocaleString()}</strong></td>
                   <td>${g.deadline}</td>
