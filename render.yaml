@@ -21,3 +21,13 @@ services:
       - key: REPL_ID
         sync: false
 
+  - type: web
+    name: ik-communications
+    runtime: static
+    rootDir: Ivana
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

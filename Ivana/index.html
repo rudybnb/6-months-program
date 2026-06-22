@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IK Communications - NGO Impact & Reporting Platform</title>
+  </head>
+  <body>
+    <div class="app-container">
+      
+      <!-- Sidebar Drawer -->
+      <aside class="sidebar">
+        <div>
+          <!-- Logo Header -->
+          <div class="sidebar-header">
+            <div class="logo-icon">IK</div>
+            <div class="logo-text">
+              IK Comms
+              <span>NGO Operating System</span>
+            </div>
+          </div>
+
+          <!-- Main Sidebar Navigation -->
+          <nav>
+            <ul class="nav-links">
+              <li>
+                <a href="#dashboard" class="active">
+                  <span class="icon">📊</span> <span>Dashboard</span>
+                </a>
+              </li>
+              <li class="admin-only">
+                <a href="#clients">
+                  <span class="icon">👥</span> <span>Clients</span>
+                </a>
+              </li>
+              <li>
+                <a href="#content">
+                  <span class="icon">⏳</span> <span>Content Board</span>
+                </a>
+              </li>
+              <li>
+                <a href="#reports">
+                  <span class="icon">📝</span> <span>Reports Center</span>
+                </a>
+              </li>
+              <li>
+                <a href="#impact">
+                  <span class="icon">📈</span> <span>Impact Track</span>
+                </a>
+              </li>
+              <li>
+                <a href="#funding">
+                  <span class="icon">💎</span> <span>Funding Discovery</span>
+                </a>
+              </li>
+              <li>
+                <a href="#agents">
+                  <span class="icon">🤖</span> <span>AI Agents</span>
+                </a>
+              </li>
+              <li class="admin-only">
+                <a href="#settings">
+                  <span class="icon">🔧</span> <span>Settings</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+
+        <!-- Sidebar Footer & Role Switches -->
+        <div class="sidebar-footer">
+          <div class="role-switcher-card">
+            <label for="roleSelector">Current Workspace</label>
+            <select id="roleSelector" class="role-select">
+              <option value="admin">💼 IK Admin Console</option>
+              <option value="client">🌱 NGO Client Portal</option>
+            </select>
+            
+            <!-- Client selector shown only when Scoping is active -->
+            <div id="sidebarClientScoper" class="client-scoper">
+              <label for="scoperClientSelect" class="mt-4">Active NGO</label>
+              <select id="scoperClientSelect" class="role-select">
+                <option value="groundwork">🌱 groundWork SA</option>
+                <option value="cleanairafrica">💨 Clean Air Africa</option>
+                <option value="youthactionsa">✊ Youth Action SA</option>
+                <option value="ecojustice">⚖️ Eco Justice</option>
+              </select>
+            </div>
+          </div>
+          <div class="sidebar-user-info">
+            <!-- Footer label -->
+            <span style="font-size: 0.65rem; color: var(--text-muted);">Consultant: Irene K.</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Panel viewport -->
+      <main class="main-content">
+        <!-- Top Navigation Header -->
+        <header class="header-bar">
+          <div class="header-left">
+            <h2 id="pageViewTitle">Dashboard</h2>
+          </div>
+          
+          <div class="header-right">
+            <!-- Search field -->
+            <div class="search-bar">
+              <input type="text" placeholder="Global system search..." />
+            </div>
+
+            <!-- Notifications -->
+            <button class="header-icon-btn has-notification" title="Alert logs">🔔</button>
+
+            <!-- Profile Info -->
+            <div class="user-profile">
+              <div class="user-avatar" id="headerUserAvatar">IK</div>
+              <div style="display: flex; flex-direction: column; line-height: 1.2;">
+                <strong style="font-size: 0.85rem;" id="headerUserName">Irene K.</strong>
+                <span style="font-size: 0.7rem; color: var(--text-muted);" id="headerUserRoleName">Platform Owner</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <!-- View Injection viewport -->
+        <div class="view-container" id="mainViewContainer">
+          <!-- SPA content rendered here -->
+        </div>
+      </main>
+
+    </div>
+
+    <!-- Global Modal Overlay -->
+    <div class="modal-overlay" id="globalModalContainer">
+      <!-- Modal elements injected dynamically -->
+    </div>
+
+    <!-- Script bootstrapping -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
