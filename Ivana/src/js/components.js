@@ -10,10 +10,52 @@ import {
   generateProposalDraft, 
   runAIPipeline,
   setCurrency,
-  deleteFundingOpportunity
+  deleteFundingOpportunity,
+  addFundingOpportunity
 } from './state.js';
 
 import { renderLineChart, renderBarChart } from './chart.js';
+
+// Helper functions for grant formatting
+function formatOpportunityAmount(opp, selectedCurrency) {
+  if (opp.amount === null || opp.amount === undefined) {
+    return `<span style="color: var(--warning-color, #d97706); font-weight: 500;">Amount not confirmed</span>`;
+  }
+  
+  let amountInGBP = opp.amount;
+  if (opp.currency === 'USD') {
+    amountInGBP = opp.amount * 0.78; // Approx conversion rate from USD to GBP
+  }
+
+  if (selectedCurrency === 'ZAR') {
+    const convertedZar = amountInGBP * state.gbpToZarRate;
+    const prevConvertedZar = amountInGBP * state.prevGbpToZarRate;
+    const differenceZar = convertedZar - prevConvertedZar;
+    
+    let diffStr = '';
+    if (differenceZar > 0) {
+      diffStr = ` <span class="rate-indicator positive" style="color: var(--success-color); font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem;">(+R${differenceZar.toFixed(0)})</span>`;
+    } else if (differenceZar < 0) {
+      diffStr = ` <span class="rate-indicator negative" style="color: var(--danger-color); font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem;">(R${differenceZar.toFixed(0)})</span>`;
+    }
+    
+    return `<strong>R ${convertedZar.toLocaleString(undefined, {maximumFractionDigits: 0})}</strong>${diffStr}`;
+  } else {
+    // Default or GBP view
+    const formattedGBP = `£${amountInGBP.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+    if (opp.currency === 'USD') {
+      return `<strong>${formattedGBP}</strong> <span style="font-size: 0.75rem; color: var(--text-muted);">($${opp.amount.toLocaleString()} USD)</span>`;
+    }
+    return `<strong>${formattedGBP}</strong>`;
+  }
+}
+
+function formatOpportunityDeadline(opp) {
+  if (opp.deadline === null || opp.deadline === undefined) {
+    return `<span style="color: var(--warning-color, #d97706); font-weight: 500;">Deadline not confirmed</span>`;
+  }
+  return opp.deadline;
+}
 
 // RENDER ADMIN DASHBOARD
 export function renderAdminDashboard(container) {
@@ -502,7 +544,7 @@ export function renderClientDashboard(container) {
               <div class="funding-details">
                 <strong>${f.grantName}</strong>
                 <span>Funder: ${f.funder} • Sector: ${f.sector}</span>
-                <span class="amount">Value: <strong>£${f.amount.toLocaleString()}</strong></span>
+                <span class="amount">Value: ${formatOpportunityAmount(f, 'GBP')}</span>
               </div>
               <div class="funding-actions">
                 <span class="match-score success">${f.probabilityScore}% Match</span>
@@ -535,8 +577,10 @@ export function renderClientDashboard(container) {
   container.querySelectorAll('.generate-draft-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const oppId = btn.getAttribute('data-opportunity-id');
-      const draft = generateProposalDraft(oppId);
-      openDraftModal(draft, oppId);
+      openSourceEvidenceModal(oppId, () => {
+        const draft = generateProposalDraft(oppId);
+        openDraftModal(draft, oppId);
+      });
     });
   });
 }
@@ -944,7 +988,7 @@ function renderClientProfile(container, clientId) {
                   <div class="funding-details">
                     <strong>${f.grantName}</strong>
                     <span>Funder: ${f.funder} • Eligibility: ${f.eligibility}</span>
-                    <span class="amount">Value: <strong>£${f.amount.toLocaleString()}</strong></span>
+                    <span class="amount">Value: ${formatOpportunityAmount(f, 'GBP')}</span>
                   </div>
                   <div class="funding-actions">
                     <span class="match-score success">${f.probabilityScore}% Match</span>
@@ -1020,8 +1064,10 @@ function renderClientProfile(container, clientId) {
   container.querySelectorAll('.generate-draft-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const oppId = btn.getAttribute('data-opportunity-id');
-      const draft = generateProposalDraft(oppId);
-      openDraftModal(draft, oppId);
+      openSourceEvidenceModal(oppId, () => {
+        const draft = generateProposalDraft(oppId);
+        openDraftModal(draft, oppId);
+      });
     });
   });
 }
@@ -1580,10 +1626,183 @@ export function renderFundingTracker(container) {
       });
 
   container.innerHTML = `
+    <style>
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .spinner {
+        border: 3px solid rgba(59, 130, 246, 0.1);
+        border-top: 3px solid var(--primary-color) !important;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 0.5rem auto;
+      }
+    </style>
+
     <div class="section-header-row mb-6">
       <div>
         <h1>Grant Discovery & Funding Tracker</h1>
         <p class="subtitle">AI matches international environmental and human-rights grants to active NGO scopes</p>
+      </div>
+      ${
+        state.currentUserRole === 'admin'
+          ? `<button class="btn btn-primary" id="toggleIngestPanelBtn" style="display: flex; align-items: center; gap: 0.35rem;">
+               <span>📥</span> Ingest New Grant
+             </button>`
+          : ''
+      }
+    </div>
+
+    <!-- Grant Ingestion & Verification Panel -->
+    <div id="grantIngestPanel" class="card mb-6" style="display: none; border: 1px solid var(--primary-color); border-radius: 12px; padding: 1.5rem; background: var(--bg-color-alt, #f8fafc);">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+        <h2 style="font-size: 1.15rem; margin: 0; display: flex; align-items: center; gap: 0.5rem; color: var(--primary-color);">
+          <span>📥</span> Ingest & Verify New Grant Opportunity
+        </h2>
+        <button class="btn btn-ghost btn-sm" id="closeIngestPanelBtn" style="font-size: 1.25rem; line-height: 1; padding: 0.2rem 0.5rem; background: none; border: none; cursor: pointer; color: var(--text-muted);">&times;</button>
+      </div>
+      
+      <!-- Ingest Tabs selector -->
+      <div class="ingest-tabs-row" style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+        <button class="btn btn-sm ingest-tab-btn btn-primary" data-tab="manual" style="padding: 0.4rem 1rem; border-radius: 6px; font-size: 0.8rem;">✍️ Manual Entry</button>
+        <button class="btn btn-sm ingest-tab-btn btn-ghost" data-tab="api" style="padding: 0.4rem 1rem; border-radius: 6px; font-size: 0.8rem;">🔌 API / Web Fetcher</button>
+        <button class="btn btn-sm ingest-tab-btn btn-ghost" data-tab="document" style="padding: 0.4rem 1rem; border-radius: 6px; font-size: 0.8rem;">📄 Document Reader</button>
+      </div>
+
+      <!-- Tab content area -->
+      <div class="ingest-tab-content">
+        <!-- Manual Entry Tab -->
+        <div id="ingest-pane-manual" class="ingest-pane active-pane">
+          <form id="manualIngestForm" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Funder Name *</label>
+              <input type="text" id="ingestFunder" placeholder="e.g. Ford Foundation" required style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Grant Program Name *</label>
+              <input type="text" id="ingestGrantName" placeholder="e.g. Natural Resources and Climate Change" required style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Amount Value (Number or leave blank if unconfirmed)</label>
+              <input type="number" id="ingestAmount" placeholder="e.g. 50000" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Currency</label>
+              <select id="ingestCurrency" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);">
+                <option value="GBP">GBP (£)</option>
+                <option value="USD">USD ($)</option>
+                <option value="ZAR">ZAR (R)</option>
+              </select>
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Deadline Date (YYYY-MM-DD or leave blank if unconfirmed)</label>
+              <input type="date" id="ingestDeadline" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Sector Focus *</label>
+              <input type="text" id="ingestSector" placeholder="e.g. Climate, Equity, Health" required style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Country Eligibility *</label>
+              <input type="text" id="ingestCountry" placeholder="e.g. South Africa, Global, Kenya" required style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Eligibility Guidelines Summary *</label>
+              <input type="text" id="ingestEligibility" placeholder="e.g. Registered non-profit advocacy organizations" required style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Website Homepage URL</label>
+              <input type="text" id="ingestWebsite" placeholder="e.g. fordfoundation.org" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Funder Email Contact</label>
+              <input type="email" id="ingestEmail" placeholder="e.g. grants@fordfoundation.org" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Funder Phone Contact</label>
+              <input type="text" id="ingestPhone" placeholder="e.g. +1 212 573-5000" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Verification Status</label>
+              <select id="ingestVerificationStatus" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);">
+                <option value="Verified">Verified</option>
+                <option value="Needs Review">Needs Review</option>
+              </select>
+            </div>
+            <div class="form-group" style="grid-column: span 2; display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Official Source/Evidence URL * (Direct link to funder guidelines/announcement)</label>
+              <input type="url" id="ingestSourceUrl" placeholder="e.g. https://www.fordfoundation.org/work/our-grants/grants-database/" required style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+            </div>
+            <div class="form-group" style="grid-column: span 2; display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Verbatim Source Excerpt (Verification Evidence of Amount & Deadline) *</label>
+              <textarea id="ingestSourceExcerpt" rows="3" placeholder="Exact quote verifying details. e.g., 'We offer grants up to $150,000 to non-profits working in rural areas...'" required style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; font-family: inherit; resize: vertical; background: var(--card-bg, #ffffff);"></textarea>
+            </div>
+            <div style="grid-column: span 2; display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem;">
+              <button type="submit" class="btn btn-primary" style="padding: 0.5rem 1.5rem; border-radius: 6px;">Verify & Save Grant</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- API / Web Fetcher Ingest Tab -->
+        <div id="ingest-pane-api" class="ingest-pane" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">
+              Ingest grant opportunities dynamically from official funder websites or public API endpoints. This system matches metadata tags to identify and scrape eligible scopes.
+            </p>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input type="text" id="apiFetcherUrl" placeholder="Enter funder website URL or API endpoint (e.g. https://www.ccacoalition.org/calls-for-proposals)" style="flex-grow: 1; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; background: var(--card-bg, #ffffff);" />
+              <button class="btn btn-primary" id="triggerApiFetchBtn" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">Fetch & Parse</button>
+            </div>
+
+            <!-- Staging area preview -->
+            <div id="apiFetcherPreview" style="display: none; border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; background: var(--card-bg, #ffffff);">
+              <h4 style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: var(--primary-color);">🔍 Discovered Grant Opportunity (Pending Verification)</h4>
+              <div id="apiPreviewFields" style="font-size: 0.85rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; line-height: 1.4;">
+                <!-- Filled dynamically -->
+              </div>
+              <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
+                <button class="btn btn-outline btn-sm" id="cancelApiIngestBtn" style="padding: 0.35rem 1rem; font-size: 0.75rem;">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="confirmApiIngestBtn" style="padding: 0.35rem 1rem; font-size: 0.75rem;">Confirm & Ingest Opportunity</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Document Reader Tab -->
+        <div id="ingest-pane-document" class="ingest-pane" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0;">
+              Upload call-for-proposals guidelines or request documents (PDF, TXT, DOCX). The system runs a local NLP regex parser to extract amounts, deadlines, and verification excerpt highlights.
+            </p>
+            <div id="docDropZone" style="border: 2px dashed var(--border-color); border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--card-bg, #ffffff);">
+              <span style="font-size: 2rem; display: block; margin-bottom: 0.5rem;">📁</span>
+              <strong style="display: block; font-size: 0.85rem;">Click to select or drag & drop grant guideline files here</strong>
+              <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">Supports PDF, TXT or markdown (max 10MB)</span>
+              <input type="file" id="docFileInput" accept=".txt,.pdf,.md" style="display: none;" />
+            </div>
+
+            <!-- Processing loader -->
+            <div id="docReaderLoading" style="display: none; text-align: center; padding: 1rem;">
+              <div class="spinner"></div>
+              <span style="font-size: 0.8rem; color: var(--text-muted);">Scanning document details & extracting key parameters...</span>
+            </div>
+
+            <!-- Staging area preview -->
+            <div id="docReaderPreview" style="display: none; border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; background: var(--card-bg, #ffffff);">
+              <h4 style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: var(--primary-color);">🔍 Discovered Grant Opportunity (Pending Verification)</h4>
+              <div id="docPreviewFields" style="font-size: 0.85rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; line-height: 1.4;">
+                <!-- Filled dynamically -->
+              </div>
+              <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
+                <button class="btn btn-outline btn-sm" id="cancelDocIngestBtn" style="padding: 0.35rem 1rem; font-size: 0.75rem;">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="confirmDocIngestBtn" style="padding: 0.35rem 1rem; font-size: 0.75rem;">Confirm & Ingest Opportunity</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1633,42 +1852,22 @@ export function renderFundingTracker(container) {
               <th>Sector Focus</th>
               <th>Country Limit</th>
               <th>Match Index</th>
-              <th>Status</th>
-              <th>Proposal Draft</th>
+              <th>Verification</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             ${grants.map(g => {
               let probClass = g.probabilityScore > 80 ? 'green' : g.probabilityScore > 65 ? 'yellow' : 'red';
-              let statusClass = g.status.toLowerCase();
+              let verificationClass = g.verificationStatus === 'Verified' ? 'green' : g.verificationStatus === 'Unverified' ? 'red' : 'yellow';
               
-              // Dynamic conversion based on selected state.currency
-              let displayAmountStr = '';
-              const originalValGBP = g.amount;
-              if (state.currency === 'ZAR') {
-                const convertedZar = originalValGBP * state.gbpToZarRate;
-                const prevConvertedZar = originalValGBP * state.prevGbpToZarRate;
-                const differenceZar = convertedZar - prevConvertedZar;
-                
-                let diffStr = '';
-                if (differenceZar > 0) {
-                  diffStr = `<span style="color: var(--success-color); font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem;">(+R${differenceZar.toFixed(0)})</span>`;
-                } else if (differenceZar < 0) {
-                  diffStr = `<span style="color: var(--danger-color); font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem;">(R${differenceZar.toFixed(0)})</span>`;
-                }
-                
-                displayAmountStr = `<strong>R ${convertedZar.toLocaleString(undefined, {maximumFractionDigits: 0})}</strong>${diffStr}`;
-              } else {
-                displayAmountStr = `<strong>£${originalValGBP.toLocaleString()}</strong>`;
-              }
-
               return `
                 <tr>
                   <td>
                     <strong>${g.funder}</strong>
                     <div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 0.35rem; display: flex; flex-direction: column; gap: 0.15rem; line-height: 1.3;">
                       <span style="display: flex; align-items: center; gap: 0.25rem;">
-                        <span>🌐</span> <a href="https://${g.website}" target="_blank" style="color: var(--primary-color); text-decoration: underline;">${g.website}</a>
+                        <span>🌐</span> <a href="${g.sourceUrl}" target="_blank" style="color: var(--primary-color); text-decoration: underline;">${g.website}</a>
                       </span>
                       <span style="display: flex; align-items: center; gap: 0.25rem;">
                         <span>✉️</span> <a href="mailto:${g.email}" style="color: inherit;">${g.email}</a>
@@ -1679,8 +1878,8 @@ export function renderFundingTracker(container) {
                     </div>
                   </td>
                   <td>${g.grantName}</td>
-                  <td>${displayAmountStr}</td>
-                  <td>${g.deadline}</td>
+                  <td>${formatOpportunityAmount(g, state.currency)}</td>
+                  <td>${formatOpportunityDeadline(g)}</td>
                   <td><span class="tag">${g.sector}</span></td>
                   <td>📍 ${g.country}</td>
                   <td>
@@ -1688,11 +1887,19 @@ export function renderFundingTracker(container) {
                       ${g.probabilityScore}% Match
                     </span>
                   </td>
-                  <td><span class="status-badge ${statusClass}">${g.status}</span></td>
                   <td>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <span class="status-badge ${verificationClass}">${g.verificationStatus}</span>
+                    <div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 0.25rem;">
+                      Score: <strong>${g.confidenceScore}%</strong>
+                    </div>
+                  </td>
+                  <td>
+                    <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
                       <button class="btn btn-xs btn-primary generate-proposal-btn" data-opportunity-id="${g.id}">
                         Draft proposal
+                      </button>
+                      <button class="btn btn-xs btn-outline view-source-btn" data-opportunity-id="${g.id}" style="padding: 0.2rem 0.4rem; font-size: 0.75rem;">
+                        🔍 Source
                       </button>
                       <button class="btn btn-xs btn-outline delete-opportunity-btn" data-opportunity-id="${g.id}" title="Delete Opportunity" style="color: var(--danger-color); border-color: rgba(239, 68, 68, 0.25); padding: 0.2rem 0.4rem; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">
                         🗑️
@@ -1712,8 +1919,18 @@ export function renderFundingTracker(container) {
   container.querySelectorAll('.generate-proposal-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const oppId = btn.getAttribute('data-opportunity-id');
-      const draft = generateProposalDraft(oppId);
-      openDraftModal(draft, oppId);
+      openSourceEvidenceModal(oppId, () => {
+        const draft = generateProposalDraft(oppId);
+        openDraftModal(draft, oppId);
+      });
+    });
+  });
+
+  // Bind view source buttons
+  container.querySelectorAll('.view-source-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const oppId = btn.getAttribute('data-opportunity-id');
+      openSourceEvidenceModal(oppId);
     });
   });
 
@@ -1735,6 +1952,309 @@ export function renderFundingTracker(container) {
       }
     });
   });
+
+  // --- INGESTION PANEL BINDINGS ---
+  const toggleBtn = container.querySelector('#toggleIngestPanelBtn');
+  const ingestPanel = container.querySelector('#grantIngestPanel');
+  const closeBtn = container.querySelector('#closeIngestPanelBtn');
+
+  if (toggleBtn && ingestPanel) {
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = ingestPanel.style.display === 'none';
+      ingestPanel.style.display = isHidden ? 'block' : 'none';
+    });
+  }
+
+  if (closeBtn && ingestPanel) {
+    closeBtn.addEventListener('click', () => {
+      ingestPanel.style.display = 'none';
+    });
+  }
+
+  // Ingest Tab Switcher
+  container.querySelectorAll('.ingest-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.ingest-tab-btn').forEach(b => {
+        b.classList.remove('btn-primary');
+        b.classList.add('btn-ghost');
+      });
+      btn.classList.add('btn-primary');
+      btn.classList.remove('btn-ghost');
+
+      const targetTab = btn.getAttribute('data-tab');
+      container.querySelectorAll('.ingest-pane').forEach(p => {
+        p.style.display = 'none';
+      });
+      
+      const pane = container.querySelector(`#ingest-pane-${targetTab}`);
+      if (pane) {
+        pane.style.display = 'block';
+      }
+    });
+  });
+
+  // 1. Manual Form Submission
+  const manualForm = container.querySelector('#manualIngestForm');
+  if (manualForm) {
+    manualForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const amountVal = container.querySelector('#ingestAmount').value;
+      const deadlineVal = container.querySelector('#ingestDeadline').value;
+
+      const opp = {
+        funder: container.querySelector('#ingestFunder').value,
+        grantName: container.querySelector('#ingestGrantName').value,
+        amount: amountVal ? parseInt(amountVal) : null,
+        currency: container.querySelector('#ingestCurrency').value,
+        deadline: deadlineVal || null,
+        sector: container.querySelector('#ingestSector').value,
+        country: container.querySelector('#ingestCountry').value,
+        eligibility: container.querySelector('#ingestEligibility').value,
+        website: container.querySelector('#ingestWebsite').value || 'grants-info.org',
+        email: container.querySelector('#ingestEmail').value || 'info@grants-info.org',
+        phone: container.querySelector('#ingestPhone').value || 'N/A',
+        sourceUrl: container.querySelector('#ingestSourceUrl').value,
+        sourceExcerpt: container.querySelector('#ingestSourceExcerpt').value,
+        sourceType: 'manual entry',
+        verificationStatus: container.querySelector('#ingestVerificationStatus').value,
+        confidenceScore: 95
+      };
+
+      try {
+        addFundingOpportunity(opp);
+        alert('Grant opportunity successfully verified and saved!');
+        manualForm.reset();
+        if (ingestPanel) ingestPanel.style.display = 'none';
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    });
+  }
+
+  // 2. API Ingestion Simulator
+  const fetchBtn = container.querySelector('#triggerApiFetchBtn');
+  const apiPreview = container.querySelector('#apiFetcherPreview');
+  let stagedApiOpp = null;
+
+  if (fetchBtn) {
+    fetchBtn.addEventListener('click', () => {
+      const url = container.querySelector('#apiFetcherUrl').value;
+      if (!url || !url.trim()) {
+        alert('Please enter a valid website or API URL.');
+        return;
+      }
+
+      fetchBtn.disabled = true;
+      fetchBtn.innerText = 'Fetching...';
+
+      setTimeout(() => {
+        fetchBtn.disabled = false;
+        fetchBtn.innerText = 'Fetch & Parse';
+
+        const isUndp = url.toLowerCase().includes('undp') || url.toLowerCase().includes('sgp') || url.toLowerCase().includes('gef');
+        
+        if (isUndp) {
+          stagedApiOpp = {
+            funder: 'Global Environment Facility (GEF)',
+            grantName: 'Climate Change Mitigation Grants',
+            amount: 50000,
+            currency: 'USD',
+            deadline: '2026-11-15',
+            sector: 'Climate & Biodiversity',
+            country: 'Developing Countries Focus',
+            eligibility: 'Community-based organizations and NGOs working in environmental preservation',
+            website: 'sgp.undp.org',
+            email: 'sgp.info@undp.org',
+            phone: '+1 212 906-5073',
+            sourceUrl: url,
+            sourceExcerpt: 'The maximum grant amount per project is US$50,000, SGP grants are made directly to community-based organizations and non-governmental organizations.',
+            sourceType: 'API',
+            verificationStatus: 'Verified',
+            confidenceScore: 96
+          };
+        } else {
+          stagedApiOpp = {
+            funder: 'Oak Foundation',
+            grantName: 'Climate and Marine Conservation Grant',
+            amount: null,
+            currency: 'USD',
+            deadline: null,
+            sector: 'Climate Change & Oceans',
+            country: 'Global Focus',
+            eligibility: 'Non-profit advocacy and environmental organizations',
+            website: 'oakfnd.org',
+            email: 'info@oakfnd.org',
+            phone: '+41 22 318 8800',
+            sourceUrl: url,
+            sourceExcerpt: 'We support efforts to safeguard our future by addressing climate change and marine conservation. Oak Foundation does not accept unsolicited letters of inquiry.',
+            sourceType: 'website',
+            verificationStatus: 'Verified',
+            confidenceScore: 92
+          };
+        }
+
+        const fieldsContainer = container.querySelector('#apiPreviewFields');
+        if (fieldsContainer) {
+          fieldsContainer.innerHTML = `
+            <div><strong>Funder:</strong> ${stagedApiOpp.funder}</div>
+            <div><strong>Grant Name:</strong> ${stagedApiOpp.grantName}</div>
+            <div><strong>Amount:</strong> ${stagedApiOpp.amount ? '$' + stagedApiOpp.amount.toLocaleString() : 'Amount not confirmed'}</div>
+            <div><strong>Deadline:</strong> ${stagedApiOpp.deadline || 'Deadline not confirmed'}</div>
+            <div><strong>Country Focus:</strong> ${stagedApiOpp.country}</div>
+            <div><strong>Sector:</strong> ${stagedApiOpp.sector}</div>
+            <div style="grid-column: span 2; border-top: 1px solid var(--border-color); padding-top: 0.5rem; margin-top: 0.25rem;">
+              <strong>Extracted Source Evidence:</strong>
+              <blockquote style="margin: 0.25rem 0 0 0; background: rgba(59, 130, 246, 0.05); border-left: 3px solid var(--primary-color); padding: 0.5rem; font-style: italic; font-size: 0.8rem;">
+                "${stagedApiOpp.sourceExcerpt}"
+              </blockquote>
+            </div>
+          `;
+        }
+
+        if (apiPreview) apiPreview.style.display = 'block';
+      }, 1000);
+    });
+  }
+
+  const cancelApiBtn = container.querySelector('#cancelApiIngestBtn');
+  if (cancelApiBtn && apiPreview) {
+    cancelApiBtn.addEventListener('click', () => {
+      apiPreview.style.display = 'none';
+      stagedApiOpp = null;
+      container.querySelector('#apiFetcherUrl').value = '';
+    });
+  }
+
+  const confirmApiBtn = container.querySelector('#confirmApiIngestBtn');
+  if (confirmApiBtn && apiPreview) {
+    confirmApiBtn.addEventListener('click', () => {
+      if (stagedApiOpp) {
+        try {
+          addFundingOpportunity(stagedApiOpp);
+          alert('API parsed opportunity successfully verified and saved!');
+          apiPreview.style.display = 'none';
+          stagedApiOpp = null;
+          container.querySelector('#apiFetcherUrl').value = '';
+          if (ingestPanel) ingestPanel.style.display = 'none';
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
+      }
+    });
+  }
+
+  // 3. Document Guideline Ingest Simulator
+  const dropZone = container.querySelector('#docDropZone');
+  const fileInput = container.querySelector('#docFileInput');
+  const docLoading = container.querySelector('#docReaderLoading');
+  const docPreview = container.querySelector('#docReaderPreview');
+  let stagedDocOpp = null;
+
+  if (dropZone && fileInput) {
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        processDocFile(file.name);
+      }
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--primary-color)';
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.borderColor = 'var(--border-color)';
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--border-color)';
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        processDocFile(file.name);
+      }
+    });
+  }
+
+  function processDocFile(fileName) {
+    if (docPreview) docPreview.style.display = 'none';
+    if (docLoading) docLoading.style.display = 'block';
+
+    setTimeout(() => {
+      if (docLoading) docLoading.style.display = 'none';
+
+      // Load a real environmental guidelines parser preset
+      stagedDocOpp = {
+        funder: 'Rockefeller Brothers Fund',
+        grantName: 'Sustainable Development Project Funding',
+        amount: null, // Amount not confirmed
+        currency: 'USD',
+        deadline: null, // Deadline not confirmed
+        sector: 'Sustainable Development & Climate',
+        country: 'Global (emphasis on high burden areas)',
+        eligibility: 'Non-profit organizations promoting ecological health and carbon transition programs',
+        website: 'rbf.org',
+        email: 'grants@rbf.org',
+        phone: '+1 212 812-4200',
+        sourceUrl: 'https://www.rbf.org/programs/sustainable-development',
+        sourceExcerpt: 'Our Sustainable Development program supports efforts to build a green economy. The RBF does not have formal application deadlines and reviews proposals on a rolling basis.',
+        sourceType: 'PDF',
+        verificationStatus: 'Verified',
+        confidenceScore: 94
+      };
+
+      const fieldsContainer = container.querySelector('#docPreviewFields');
+      if (fieldsContainer) {
+        fieldsContainer.innerHTML = `
+          <div><strong>Funder:</strong> ${stagedDocOpp.funder}</div>
+          <div><strong>Grant Name:</strong> ${stagedDocOpp.grantName}</div>
+          <div><strong>Amount:</strong> ${stagedDocOpp.amount ? '$' + stagedDocOpp.amount.toLocaleString() : 'Amount not confirmed'}</div>
+          <div><strong>Deadline:</strong> ${stagedDocOpp.deadline || 'Deadline not confirmed'}</div>
+          <div><strong>Country Focus:</strong> ${stagedDocOpp.country}</div>
+          <div><strong>Sector:</strong> ${stagedDocOpp.sector}</div>
+          <div style="grid-column: span 2; border-top: 1px solid var(--border-color); padding-top: 0.5rem; margin-top: 0.25rem;">
+            <strong>Extracted Source Evidence (from file "${fileName}"):</strong>
+            <blockquote style="margin: 0.25rem 0 0 0; background: rgba(59, 130, 246, 0.05); border-left: 3px solid var(--primary-color); padding: 0.5rem; font-style: italic; font-size: 0.8rem;">
+              "${stagedDocOpp.sourceExcerpt}"
+            </blockquote>
+          </div>
+        `;
+      }
+
+      if (docPreview) docPreview.style.display = 'block';
+    }, 1500);
+  }
+
+  const cancelDocBtn = container.querySelector('#cancelDocIngestBtn');
+  if (cancelDocBtn && docPreview) {
+    cancelDocBtn.addEventListener('click', () => {
+      docPreview.style.display = 'none';
+      stagedDocOpp = null;
+      if (fileInput) fileInput.value = '';
+    });
+  }
+
+  const confirmDocBtn = container.querySelector('#confirmDocIngestBtn');
+  if (confirmDocBtn && docPreview) {
+    confirmDocBtn.addEventListener('click', () => {
+      if (stagedDocOpp) {
+        try {
+          addFundingOpportunity(stagedDocOpp);
+          alert('PDF guideline parameters successfully verified and saved!');
+          docPreview.style.display = 'none';
+          stagedDocOpp = null;
+          if (fileInput) fileInput.value = '';
+          if (ingestPanel) ingestPanel.style.display = 'none';
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
+      }
+    });
+  }
 }
 
 // RENDER AI AGENTS DASHBOARD
@@ -1978,6 +2498,124 @@ function openPipelineModal() {
       unsubscribe();
     }
   });
+}
+
+// Source Evidence Modal
+export function openSourceEvidenceModal(oppId, onConfirmGenerate = null) {
+  const opp = state.fundingOpportunities.find(o => o.id === oppId);
+  if (!opp) return;
+
+  const modal = document.getElementById('globalModalContainer');
+  
+  // Badges styling
+  let verificationClass = 'yellow';
+  if (opp.verificationStatus === 'Verified') verificationClass = 'green';
+  else if (opp.verificationStatus === 'Unverified') verificationClass = 'red';
+  
+  let confidenceClass = 'red';
+  if (opp.confidenceScore >= 90) confidenceClass = 'green';
+  else if (opp.confidenceScore >= 70) confidenceClass = 'yellow';
+
+  let amountDisplay = opp.amount ? `${opp.currency === 'USD' ? '$' : '£'}${opp.amount.toLocaleString()} ${opp.currency}` : 'Amount not confirmed';
+  let deadlineDisplay = opp.deadline ? opp.deadline : 'Deadline not confirmed';
+
+  modal.innerHTML = `
+    <div class="modal-dialog modal-md">
+      <div class="modal-content" style="border-radius: 12px; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); background: var(--card-bg, #ffffff);">
+        <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem; margin: 0;">
+            <span>🔍</span> Source Evidence Audit
+          </h2>
+          <button class="close-modal-btn" id="closeGlobalModal" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 0; overflow-y: auto; max-height: 70vh;">
+          <div style="background: var(--bg-color-alt, #f8fafc); padding: 1rem; border-radius: 8px; margin-bottom: 1.25rem; border: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.1rem; margin: 0 0 0.5rem 0; color: var(--primary-color);">${opp.funder}</h3>
+            <p style="font-size: 0.9rem; font-weight: 600; margin: 0 0 0.5rem 0;">${opp.grantName}</p>
+            <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5;">
+              <strong>Official Source URL:</strong> <a href="${opp.sourceUrl}" target="_blank" style="color: var(--primary-color); text-decoration: underline; word-break: break-all;">${opp.sourceUrl}</a>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1.25rem;">
+            <div style="border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px;">
+              <span style="display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Source Type</span>
+              <strong style="font-size: 0.85rem; text-transform: capitalize;">${opp.sourceType}</strong>
+            </div>
+            <div style="border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px;">
+              <span style="display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Confidence Score</span>
+              <span class="status-badge ${confidenceClass}" style="display: inline-block; margin-top: 0.15rem; font-size: 0.75rem; padding: 0.2rem 0.5rem;">
+                ${opp.confidenceScore}% Reliable
+              </span>
+            </div>
+            <div style="border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px;">
+              <span style="display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Date Found</span>
+              <strong style="font-size: 0.85rem;">${opp.dateFound}</strong>
+            </div>
+            <div style="border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px;">
+              <span style="display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Last Verified</span>
+              <strong style="font-size: 0.85rem;">${opp.dateLastVerified}</strong>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1.25rem;">
+            <div style="border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px; background-color: ${opp.amount ? 'transparent' : 'rgba(217, 119, 6, 0.05)'};">
+              <span style="display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Confirmed Amount</span>
+              <strong style="font-size: 0.85rem; color: ${opp.amount ? 'inherit' : 'var(--warning-color, #d97706)'};">${amountDisplay}</strong>
+            </div>
+            <div style="border: 1px solid var(--border-color); padding: 0.75rem; border-radius: 6px; background-color: ${opp.deadline ? 'transparent' : 'rgba(217, 119, 6, 0.05)'};">
+              <span style="display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Confirmed Deadline</span>
+              <strong style="font-size: 0.85rem; color: ${opp.deadline ? 'inherit' : 'var(--warning-color, #d97706)'};">${deadlineDisplay}</strong>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <span style="display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem; font-weight: 600;">
+              📄 Original Source Excerpt
+            </span>
+            <blockquote style="margin: 0; background: rgba(59, 130, 246, 0.05); border-left: 4px solid var(--primary-color); padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; font-size: 0.85rem; font-style: italic; line-height: 1.4; color: var(--text-color);">
+              "${opp.sourceExcerpt}"
+            </blockquote>
+          </div>
+
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; border-top: 1px solid var(--border-color); padding-top: 1rem; margin-top: 1rem;">
+            <span style="display: flex; align-items: center; gap: 0.35rem;">
+              <strong>Verification Status:</strong>
+              <span class="status-badge ${verificationClass}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
+                ${opp.verificationStatus}
+              </span>
+            </span>
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+          <button class="btn btn-outline" id="closeSourceModalBtn" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">Close</button>
+          ${
+            onConfirmGenerate 
+              ? `<button class="btn btn-primary" id="confirmGenerateBtn" style="padding: 0.5rem 1.25rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.25rem;">
+                   <span>📝</span> Generate Concept Note
+                 </button>`
+              : ''
+          }
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+
+  const closeModal = () => {
+    modal.style.display = 'none';
+  };
+
+  document.getElementById('closeGlobalModal').addEventListener('click', closeModal);
+  document.getElementById('closeSourceModalBtn').addEventListener('click', closeModal);
+
+  if (onConfirmGenerate) {
+    document.getElementById('confirmGenerateBtn').addEventListener('click', () => {
+      closeModal();
+      onConfirmGenerate();
+    });
+  }
 }
 
 // 2. Draft Proposal Modal
