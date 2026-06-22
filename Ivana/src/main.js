@@ -34,7 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
       '#impact': 'Impact & Analytics Index',
       '#funding': 'Grant Opportunity Discoverer',
       '#agents': 'AI Agents Control Room',
-      '#settings': 'Platform Settings'
+      '#settings': 'Platform Settings',
+      '#guide': 'System Workflow Guide'
     };
     headerTitle.textContent = titleMap[cleanHash] || 'Dashboard';
 
