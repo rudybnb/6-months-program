@@ -464,3 +464,8 @@ export function simulateMarketShift() {
   notify();
 }
 
+export function deleteFundingOpportunity(id) {
+  state.fundingOpportunities = state.fundingOpportunities.filter(o => o.id !== id);
+  notify();
+}
+

@@ -9,7 +9,8 @@ import {
   approveContentCard, 
   generateProposalDraft, 
   runAIPipeline,
-  setCurrency
+  setCurrency,
+  deleteFundingOpportunity
 } from './state.js';
 
 import { renderLineChart, renderBarChart } from './chart.js';
@@ -1689,9 +1690,14 @@ export function renderFundingTracker(container) {
                   </td>
                   <td><span class="status-badge ${statusClass}">${g.status}</span></td>
                   <td>
-                    <button class="btn btn-xs btn-primary generate-proposal-btn" data-opportunity-id="${g.id}">
-                      Draft proposal
-                    </button>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                      <button class="btn btn-xs btn-primary generate-proposal-btn" data-opportunity-id="${g.id}">
+                        Draft proposal
+                      </button>
+                      <button class="btn btn-xs btn-outline delete-opportunity-btn" data-opportunity-id="${g.id}" title="Delete Opportunity" style="color: var(--danger-color); border-color: rgba(239, 68, 68, 0.25); padding: 0.2rem 0.4rem; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">
+                        🗑️
+                      </button>
+                    </div>
                   </td>
                 </tr>
               `;
@@ -1716,6 +1722,17 @@ export function renderFundingTracker(container) {
     btn.addEventListener('click', () => {
       const currency = btn.getAttribute('data-currency');
       setCurrency(currency);
+    });
+  });
+
+  // Bind delete buttons
+  container.querySelectorAll('.delete-opportunity-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const oppId = btn.getAttribute('data-opportunity-id');
+      const opp = state.fundingOpportunities.find(o => o.id === oppId);
+      if (opp && confirm(`Are you sure you want to delete the grant opportunity "${opp.grantName}" from "${opp.funder}"?`)) {
+        deleteFundingOpportunity(oppId);
+      }
     });
   });
 }
