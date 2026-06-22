@@ -2,6 +2,12 @@
 export const state = {
   currentUserRole: 'admin', // 'admin' or 'client'
   selectedClientId: '', // No client selected initially
+  
+  // Live Currency Exchange Rate State
+  currency: 'GBP', // 'GBP' or 'ZAR'
+  gbpToZarRate: 22.85,
+  prevGbpToZarRate: 22.85,
+  rateChangePercent: 0.0,
 
   // Clear all NGO clients
   clients: [],
@@ -421,3 +427,40 @@ function getClientName(clientId) {
   const cl = state.clients.find(c => c.id === clientId);
   return cl ? cl.name : 'Unknown NGO';
 }
+
+export function setCurrency(curr) {
+  state.currency = curr;
+  notify();
+}
+
+export async function updateExchangeRate() {
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/GBP');
+    const data = await res.json();
+    if (data && data.rates && data.rates.ZAR) {
+      const newRate = data.rates.ZAR;
+      if (state.gbpToZarRate !== newRate) {
+        state.prevGbpToZarRate = state.gbpToZarRate;
+        state.gbpToZarRate = newRate;
+        const diff = newRate - state.prevGbpToZarRate;
+        state.rateChangePercent = (diff / state.prevGbpToZarRate) * 100;
+      }
+      notify();
+    }
+  } catch (err) {
+    console.error('Failed to fetch live exchange rate:', err);
+  }
+}
+
+export function simulateMarketShift() {
+  // Simulate small market ticks: GBP strengthening or weakening by ±0.01% to ±0.08% against ZAR
+  const sign = Math.random() > 0.5 ? 1 : -1;
+  const magnitude = (Math.random() * 0.07 + 0.01) / 100; 
+  const newRate = state.gbpToZarRate * (1 + (sign * magnitude));
+  
+  state.prevGbpToZarRate = state.gbpToZarRate;
+  state.gbpToZarRate = newRate;
+  state.rateChangePercent = ((newRate - state.prevGbpToZarRate) / state.prevGbpToZarRate) * 100;
+  notify();
+}
+

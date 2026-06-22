@@ -8,7 +8,8 @@ import {
   updateContentStatus, 
   approveContentCard, 
   generateProposalDraft, 
-  runAIPipeline 
+  runAIPipeline,
+  setCurrency
 } from './state.js';
 
 import { renderLineChart, renderBarChart } from './chart.js';
@@ -1585,6 +1586,40 @@ export function renderFundingTracker(container) {
       </div>
     </div>
 
+    <!-- Currency Selector and Market Rates Panel -->
+    <div class="currency-tabs-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap;">
+      <!-- Currency Tabs Switcher -->
+      <div style="display: flex; background-color: #E2E8F0; padding: 0.25rem; border-radius: 8px; gap: 0.25rem;">
+        <button class="btn btn-sm currency-tab-btn ${state.currency === 'GBP' ? 'btn-primary' : 'btn-ghost'}" data-currency="GBP" style="border-radius: 6px; font-size: 0.8rem; padding: 0.4rem 1rem;">View in GBP (£)</button>
+        <button class="btn btn-sm currency-tab-btn ${state.currency === 'ZAR' ? 'btn-primary' : 'btn-ghost'}" data-currency="ZAR" style="border-radius: 6px; font-size: 0.8rem; padding: 0.4rem 1rem;">View in ZAR (R)</button>
+      </div>
+
+      <!-- Currency Market Status Monitor -->
+      <div class="card" style="margin: 0; padding: 0.75rem 1rem; flex-grow: 1; max-width: 500px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-color: var(--border-color); box-shadow: var(--shadow-sm); border-radius: 10px;">
+        <div style="font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.15rem;">
+          <span style="color: var(--text-muted); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; display: flex; align-items: center; gap: 0.25rem;">
+            <span>💱</span> Exchange Rate Monitor
+          </span>
+          <strong>1 GBP = R ${state.gbpToZarRate.toFixed(4)} ZAR</strong>
+        </div>
+        <div>
+          ${
+            state.rateChangePercent > 0
+              ? `<span class="status-badge green" style="font-weight: 700; font-size: 0.75rem; padding: 0.35rem 0.65rem;">
+                   📈 +${state.rateChangePercent.toFixed(4)}% GBP Stronger
+                 </span>`
+              : state.rateChangePercent < 0
+              ? `<span class="status-badge red" style="font-weight: 700; font-size: 0.75rem; padding: 0.35rem 0.65rem;">
+                   📉 ${state.rateChangePercent.toFixed(4)}% GBP Weaker
+                 </span>`
+              : `<span class="status-badge disabled" style="font-weight: 700; font-size: 0.75rem; padding: 0.35rem 0.65rem;">
+                   Stable (No Change)
+                 </span>`
+          }
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="table-container">
         <table>
@@ -1605,6 +1640,27 @@ export function renderFundingTracker(container) {
             ${grants.map(g => {
               let probClass = g.probabilityScore > 80 ? 'green' : g.probabilityScore > 65 ? 'yellow' : 'red';
               let statusClass = g.status.toLowerCase();
+              
+              // Dynamic conversion based on selected state.currency
+              let displayAmountStr = '';
+              const originalValGBP = g.amount;
+              if (state.currency === 'ZAR') {
+                const convertedZar = originalValGBP * state.gbpToZarRate;
+                const prevConvertedZar = originalValGBP * state.prevGbpToZarRate;
+                const differenceZar = convertedZar - prevConvertedZar;
+                
+                let diffStr = '';
+                if (differenceZar > 0) {
+                  diffStr = `<span style="color: var(--success-color); font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem;">(+R${differenceZar.toFixed(0)})</span>`;
+                } else if (differenceZar < 0) {
+                  diffStr = `<span style="color: var(--danger-color); font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem;">(R${differenceZar.toFixed(0)})</span>`;
+                }
+                
+                displayAmountStr = `<strong>R ${convertedZar.toLocaleString(undefined, {maximumFractionDigits: 0})}</strong>${diffStr}`;
+              } else {
+                displayAmountStr = `<strong>£${originalValGBP.toLocaleString()}</strong>`;
+              }
+
               return `
                 <tr>
                   <td>
@@ -1622,7 +1678,7 @@ export function renderFundingTracker(container) {
                     </div>
                   </td>
                   <td>${g.grantName}</td>
-                  <td><strong>£${g.amount.toLocaleString()}</strong></td>
+                  <td>${displayAmountStr}</td>
                   <td>${g.deadline}</td>
                   <td><span class="tag">${g.sector}</span></td>
                   <td>📍 ${g.country}</td>
@@ -1652,6 +1708,14 @@ export function renderFundingTracker(container) {
       const oppId = btn.getAttribute('data-opportunity-id');
       const draft = generateProposalDraft(oppId);
       openDraftModal(draft, oppId);
+    });
+  });
+
+  // Bind currency selector buttons
+  container.querySelectorAll('.currency-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const currency = btn.getAttribute('data-currency');
+      setCurrency(currency);
     });
   });
 }

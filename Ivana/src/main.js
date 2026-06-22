@@ -1,5 +1,5 @@
 import './style.css';
-import { state, subscribe, changeUserRole, selectClient } from './js/state.js';
+import { state, subscribe, changeUserRole, selectClient, updateExchangeRate, simulateMarketShift } from './js/state.js';
 import { initRouter } from './js/router.js';
 import { initAssistant } from './js/assistant.js';
 
@@ -19,6 +19,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize interactive support assistant
   initAssistant();
+
+  // Fetch real-world exchange rates from api and start simulated market updates
+  updateExchangeRate();
+  setInterval(() => {
+    simulateMarketShift();
+  }, 10000);
 
   // Sync header metadata with state
   const syncHeaderAndNavigation = () => {
