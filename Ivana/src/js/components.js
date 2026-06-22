@@ -4298,7 +4298,7 @@ export function renderAgentsDashboard(container) {
       </div>
 
       <!-- Tab Panel Content -->
-      <div class="cr-tab-panel">
+      <div class="cr-tab-panel active">
         ${renderActiveTabContent(client, briefStatus, clientEvidence, clientOutputs)}
       </div>
     </div>
