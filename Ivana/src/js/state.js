@@ -301,13 +301,20 @@ export const state = {
     }
   ],
 
-  // AI Generated Outputs Queue
   aiOutputs: [
     {
       id: 'out1',
       clientId: 'groundwork-demo',
+      client_id: 'groundwork-demo',
       campaignName: 'Clean Air Durban',
+      campaign_id: 'cmp1',
+      campaignId: 'cmp1',
+      project_id: 'School Sensor Deployment',
+      projectId: 'School Sensor Deployment',
+      evidence_id: 'ev1',
+      evidenceId: 'ev1',
       agentId: 'socialmedia',
+      agent_id: 'socialmedia',
       outputType: '5 Facebook posts',
       platform: 'Facebook',
       tone: 'Urgent, Empowering',
@@ -319,6 +326,11 @@ export const state = {
       confidenceScore: 98,
       verificationStatus: 'Verified',
       approvalStatus: 'Draft',
+      approval_status: 'Draft',
+      created_at: '2026-06-20T12:00:00Z',
+      createdAt: '2026-06-20T12:00:00Z',
+      updated_at: '2026-06-20T12:00:00Z',
+      updatedAt: '2026-06-20T12:00:00Z',
       content: '🚨 Durban Air Quality Alert! 🚨\n\nDid you know that Southern Durban schools exceed WHO air safety limits by 140% during winter? This is unacceptable for our children\'s health.\n\nWe are deploying 15 new PM2.5 monitors to Durban schools to hold polluters accountable. Knowledge is power. Support our sensor campaign today!\n\n#CleanAirSA #EnvironmentalJustice #BreatheSafe',
       approvalPerson: 'Irene K.',
       isDemoData: true
@@ -326,8 +338,16 @@ export const state = {
     {
       id: 'out2',
       clientId: 'vukani-demo',
+      client_id: 'vukani-demo',
       campaignName: 'Soweto Waste Picker Dignity Project',
+      campaign_id: 'cmp2',
+      campaignId: 'cmp2',
+      project_id: 'Waste Picker Dignity',
+      projectId: 'Waste Picker Dignity',
+      evidence_id: 'ev3',
+      evidenceId: 'ev3',
       agentId: 'storytelling',
+      agent_id: 'storytelling',
       outputType: 'Donor impact story',
       platform: 'Email newsletter',
       tone: 'Grassroots, Encouraging',
@@ -339,6 +359,11 @@ export const state = {
       confidenceScore: 90,
       verificationStatus: 'Needs Review',
       approvalStatus: 'Internal Review',
+      approval_status: 'Internal Review',
+      created_at: '2026-06-21T14:30:00Z',
+      createdAt: '2026-06-21T14:30:00Z',
+      updated_at: '2026-06-21T14:30:00Z',
+      updatedAt: '2026-06-21T14:30:00Z',
       content: 'Title: Restoring Dignity to Soweto\'s Waste Heroes\n\nNomcebo Mabuza stands at the gates of the Soweto Recycling Hub, looking at the daily queue of collectors. In a recent survey, Vukani Environmental discovered that 87% of township waste pickers do not own a single pair of safety boots.\n\nNomcebo says: "They perform 80% of our local recycling work, yet they walk the streets in worn-out trainers. It is about dignity." Vukani is raising support to equip 100 collectors with steel-toe boots. Join us in making Soweto clean and safe.',
       approvalPerson: 'Nomcebo Mabuza',
       isDemoData: true
@@ -1006,10 +1031,14 @@ export function updateAiOutputStatus(id, newStatus) {
   const out = state.aiOutputs.find(o => o.id === id);
   if (out) {
     out.approvalStatus = newStatus;
+    out.approval_status = newStatus;
+    out.updatedAt = new Date().toISOString();
+    out.updated_at = new Date().toISOString();
     
     // If output is published, add to content board or trigger stats boost
     if (newStatus === 'Published') {
-      const client = state.clients.find(c => c.id === out.clientId);
+      const clientId = out.clientId || out.client_id;
+      const client = state.clients.find(c => c.id === clientId);
       if (client && state.impactMetrics[client.id]) {
         state.impactMetrics[client.id].peopleReached += Math.floor(Math.random() * 300) + 150;
         state.impactMetrics[client.id].mediaMentions += Math.random() > 0.7 ? 1 : 0;

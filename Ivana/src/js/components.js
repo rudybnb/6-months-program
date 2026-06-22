@@ -3626,10 +3626,25 @@ export function renderAgentsDashboard(container) {
           
           const generatedContent = generateSimulatedAiOutputContent(agentId, client, campaignName, selectedEv.textExcerpt, tone, outputType, platform);
           
+          const matchedCampaign = state.campaigns.find(c => c.name === campaignName && c.client === client.id);
           addAiOutput({
             clientId: client.id,
+            client_id: client.id,
             campaignName: campaignName,
+            campaignId: matchedCampaign ? matchedCampaign.id : 'cmp_gen',
+            campaign_id: matchedCampaign ? matchedCampaign.id : 'cmp_gen',
+            projectId: selectedEv.project || 'General',
+            project_id: selectedEv.project || 'General',
+            evidenceId: selectedEv.id,
+            evidence_id: selectedEv.id,
             agentId: agentId,
+            agent_id: agentId,
+            approvalStatus: 'Draft',
+            approval_status: 'Draft',
+            createdAt: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
             outputType: outputType,
             platform: platform,
             tone: tone,
