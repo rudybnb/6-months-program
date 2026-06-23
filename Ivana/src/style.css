@@ -3677,3 +3677,85 @@ table td {
   text-decoration: line-through;
   color: var(--text-muted);
 }
+
+/* Onboarding Wizard Stepper CSS */
+.onboarding-wizard-layout {
+  display: flex;
+  height: 80vh;
+  max-height: 700px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: white;
+}
+
+.onboarding-steps-sidebar {
+  width: 250px;
+  background: #0f172a;
+  color: white;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.onboarding-wizard-main {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  height: 100%;
+}
+
+.onboarding-wizard-header {
+  background: white;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.onboarding-wizard-body {
+  flex-grow: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.onboarding-wizard-footer {
+  background: white;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.onboarding-steps-sidebar li {
+  transition: background-color 0.2s ease;
+}
+
+.onboarding-steps-sidebar li:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.goal-pill {
+  cursor: pointer;
+  border-radius: 20px;
+  transition: all 0.2s ease;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+
+.goal-pill:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.proposed-changelog-box {
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

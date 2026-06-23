@@ -1,0 +1,806 @@
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { db, initDb } from './db.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = 3000;
+const JWT_SECRET = 'ik-communications-jwt-key-2026';
+
+// Enable CORS and cookie parsing
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  credentials: true
+}));
+app.use(express.json());
+app.use(cookieParser());
+
+// Initialize file uploads folders
+const uploadsDir = path.join(__dirname, 'storage', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// ----------------------------------------------------
+// SECURE FILE UPLOAD MODULE (MULTER SETUP)
+// ----------------------------------------------------
+
+const ALLOWED_EXTENSIONS = [
+  '.pdf', '.docx', '.xlsx', '.xls', '.vtt', '.txt', '.srt', '.png', '.jpg', '.jpeg'
+];
+
+const ZOOM_TRANSCRIPT_EXTENSIONS = [
+  '.vtt', '.txt', '.docx', '.pdf', '.srt'
+];
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const basename = path.basename(file.originalname, ext);
+    const sanitizedBasename = basename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const uniqueName = `${Date.now()}-${Math.floor(Math.random() * 10000000)}${ext}`;
+    cb(null, uniqueName);
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  
+  if (req.path.includes('/meetings')) {
+    if (ZOOM_TRANSCRIPT_EXTENSIONS.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid format. Zoom transcript files must be one of: ${ZOOM_TRANSCRIPT_EXTENSIONS.join(', ')}`), false);
+    }
+  } else {
+    if (ALLOWED_EXTENSIONS.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid format. Allowed file types are: ${ALLOWED_EXTENSIONS.join(', ')}`), false);
+    }
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  }
+});
+
+// ----------------------------------------------------
+// CORE SECURITY MIDDLEWARE
+// ----------------------------------------------------
+
+function authenticateToken(req, res, next) {
+  let token = req.cookies.token;
+  if (!token && req.headers.authorization) {
+    const parts = req.headers.authorization.split(' ');
+    if (parts[0] === 'Bearer') token = parts[1];
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: 'Authentication required. Please sign in.' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ message: 'Access expired or invalid token.' });
+    req.user = user;
+    next();
+  });
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Forbidden. Admin privileges required.' });
+  }
+  next();
+}
+
+async function checkClientAccess(req, res, next) {
+  const clientId = req.params.id || req.body.clientId || req.body.client_id || req.query.clientId || req.query.client_id;
+  
+  if (!clientId) {
+    return res.status(400).json({ message: 'Missing clientId query or parameter context.' });
+  }
+
+  if (req.user.role === 'admin') {
+    return next();
+  }
+
+  const linkage = await db('client_users')
+    .where({ userId: req.user.id, clientId: clientId })
+    .first();
+
+  if (!linkage) {
+    return res.status(403).json({ message: 'Unauthorized. You do not have access to this client workspace.' });
+  }
+  next();
+}
+
+async function logAudit(userId, action, clientId, targetId, details, req) {
+  const ipAddress = req ? (req.headers['x-forwarded-for'] || req.socket.remoteAddress) : '';
+  await db('audit_logs').insert({
+    id: 'aud-' + Math.floor(Math.random() * 10000000),
+    userId: userId,
+    action: action,
+    clientId: clientId,
+    targetId: targetId,
+    details: details,
+    ipAddress: ipAddress
+  });
+}
+
+// ----------------------------------------------------
+// AUTH ENDPOINTS
+// ----------------------------------------------------
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required.' });
+  }
+
+  try {
+    const user = await db('users').where({ email }).first();
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials. User not found.' });
+    }
+
+    const validPass = await bcrypt.compare(password, user.passwordHash);
+    if (!validPass) {
+      return res.status(401).json({ message: 'Invalid credentials. Password incorrect.' });
+    }
+
+    let assignedClientId = null;
+    if (user.role === 'client') {
+      const link = await db('client_users').where({ userId: user.id }).first();
+      if (link) assignedClientId = link.clientId;
+    }
+
+    const token = jwt.sign(
+      { id: user.id, name: user.name, email: user.email, role: user.role, clientId: assignedClientId },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      maxAge: 8 * 60 * 60 * 1000
+    });
+
+    await logAudit(user.id, 'LOGIN', assignedClientId, user.id, `User logged in from web application.`, req);
+
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      clientId: assignedClientId,
+      token
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/auth/logout', authenticateToken, async (req, res) => {
+  await logAudit(req.user.id, 'LOGOUT', req.user.clientId, req.user.id, 'User signed out.', req);
+  res.clearCookie('token');
+  res.json({ message: 'Logged out successfully.' });
+});
+
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+  res.json(req.user);
+});
+
+// ----------------------------------------------------
+// NGO WORKSPACE ENDPOINTS
+// ----------------------------------------------------
+
+app.get('/api/clients', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role === 'admin') {
+      const clients = await db('client_workspaces').select('*');
+      res.json(clients);
+    } else {
+      const clientIds = await db('client_users')
+        .where({ userId: req.user.id })
+        .pluck('clientId');
+      const clients = await db('client_workspaces').whereIn('id', clientIds);
+      res.json(clients);
+    }
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/clients', authenticateToken, requireAdmin, async (req, res) => {
+  const clientObj = req.body;
+  if (!clientObj.name) {
+    return res.status(400).json({ message: 'Organisation Name is required.' });
+  }
+
+  const clientId = clientObj.id || clientObj.name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.floor(Math.random() * 1000);
+
+  try {
+    const finalClient = {
+      id: clientId,
+      name: clientObj.name,
+      logo: clientObj.logo || '🌱',
+      website: clientObj.website,
+      country: clientObj.country,
+      sector: clientObj.sector,
+      primaryContact: clientObj.primaryContact,
+      email: clientObj.email,
+      phone: clientObj.phone,
+      monthlyFee: parseFloat(clientObj.monthlyFee) || 0.0,
+      contractValue: parseFloat(clientObj.contractValue) || 0.0,
+      startDate: clientObj.startDate,
+      renewalDate: clientObj.renewalDate,
+      clientStatus: clientObj.clientStatus || 'Lead',
+      isBriefApproved: clientObj.isBriefApproved || false,
+      isMeetingSummaryApproved: clientObj.isMeetingSummaryApproved || false,
+      areAgentsActivated: clientObj.areAgentsActivated || false,
+      
+      fbPageUrl: clientObj.fbPageUrl,
+      fbFollowers: parseInt(clientObj.fbFollowers) || 0,
+      fbAvgReach: parseInt(clientObj.fbAvgReach) || 0,
+      fbAvgEngagement: parseFloat(clientObj.fbAvgEngagement) || 0.0,
+      igHandle: clientObj.igHandle,
+      igFollowers: parseInt(clientObj.igFollowers) || 0,
+      igAvgReach: parseInt(clientObj.igAvgReach) || 0,
+      igAvgEngagement: parseFloat(clientObj.igAvgEngagement) || 0.0,
+      baselineTopPosts: clientObj.baselineTopPosts,
+      baselineDemographics: clientObj.baselineDemographics,
+      baselineStartDate: clientObj.baselineStartDate,
+
+      goalsAchieve: clientObj.goalsAchieve,
+      goalsProblem: clientObj.goalsProblem,
+      goalsTop3: clientObj.goalsTop3,
+      goalsSuccess: clientObj.goalsSuccess,
+      goalsChallenges: clientObj.goalsChallenges,
+      goalsSupport: clientObj.goalsSupport,
+
+      mission: clientObj.mission,
+      shortDesc: clientObj.shortDesc,
+      toneOfVoice: clientObj.toneOfVoice,
+      writingStyle: clientObj.writingStyle,
+      wordsToUse: clientObj.wordsToUse,
+      wordsToAvoid: clientObj.wordsToAvoid,
+      brandColours: clientObj.brandColours,
+      fonts: clientObj.fonts,
+      approvedHashtags: clientObj.approvedHashtags,
+      socialHandles: clientObj.socialHandles,
+      canvaTemplates: clientObj.canvaTemplates,
+      posterExamples: clientObj.posterExamples,
+
+      targetReach: clientObj.targetReach,
+      audienceCommunity: clientObj.audienceCommunity,
+      audienceDonor: clientObj.audienceDonor,
+      audienceGovernment: clientObj.audienceGovernment,
+      audienceYouth: clientObj.audienceYouth,
+      audienceMedia: clientObj.audienceMedia,
+      locations: clientObj.locations,
+      ageGroups: clientObj.ageGroups,
+      languages: clientObj.languages,
+      culturalConsiderations: clientObj.culturalConsiderations,
+      audienceUnderstanding: clientObj.audienceUnderstanding,
+      audienceAction: clientObj.audienceAction,
+
+      currentFunders: clientObj.currentFunders,
+      grantNames: clientObj.grantNames,
+      reportingDeadlines: clientObj.reportingDeadlines,
+      requiredDonorOutputs: clientObj.requiredDonorOutputs,
+      donorLogoRequirements: clientObj.donorLogoRequirements,
+      funderCommunicationRules: clientObj.funderCommunicationRules,
+      requiredImpactMetrics: clientObj.requiredImpactMetrics,
+      requiredEvidence: clientObj.requiredEvidence,
+      reportFrequency: clientObj.reportFrequency || 'Monthly'
+    };
+
+    await db('client_workspaces').insert(finalClient);
+    await logAudit(req.user.id, 'WORKSPACE_CREATION', clientId, clientId, `Workspace "${finalClient.name}" created as draft.`, req);
+
+    res.status(201).json(finalClient);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/clients/:id', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const client = await db('client_workspaces').where({ id: req.params.id }).first();
+    if (!client) {
+      return res.status(404).json({ message: 'Client workspace not found.' });
+    }
+    res.json(client);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/clients/:id/brief', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const client = await db('client_workspaces').where({ id: req.params.id }).first();
+    if (!client) {
+      return res.status(404).json({ message: 'Client workspace not found.' });
+    }
+
+    const updates = req.body;
+    // Map camelCase body fields directly to identical camelCase DB columns
+    const dbUpdates = {};
+    const stringFields = [
+      'name', 'logo', 'website', 'country', 'sector', 'email', 'phone', 'mission',
+      'goalsAchieve', 'goalsProblem', 'goalsTop3', 'goalsSuccess', 'goalsChallenges', 'goalsSupport',
+      'shortDesc', 'toneOfVoice', 'writingStyle', 'wordsToUse', 'wordsToAvoid',
+      'brandColours', 'fonts', 'approvedHashtags', 'socialHandles', 'canvaTemplates', 'posterExamples',
+      'targetReach', 'audienceCommunity', 'audienceDonor', 'audienceGovernment', 'audienceYouth', 'audienceMedia',
+      'locations', 'ageGroups', 'languages', 'culturalConsiderations', 'audienceUnderstanding', 'audienceAction',
+      'currentFunders', 'grantNames', 'reportingDeadlines', 'requiredDonorOutputs', 'donorLogoRequirements',
+      'funderCommunicationRules', 'requiredImpactMetrics', 'requiredEvidence', 'reportFrequency', 'clientStatus',
+      'isBriefApproved', 'areAgentsActivated'
+    ];
+
+    stringFields.forEach(f => {
+      if (updates[f] !== undefined) dbUpdates[f] = updates[f];
+    });
+
+    await db('client_workspaces').where({ id: req.params.id }).update(dbUpdates);
+    
+    if (dbUpdates.isBriefApproved !== undefined) {
+      const act = dbUpdates.isBriefApproved ? 'BRIEF_APPROVAL' : 'BRIEF_UNAPPROVAL';
+      await logAudit(req.user.id, act, req.params.id, req.params.id, `Brief approved status set to ${dbUpdates.isBriefApproved}.`, req);
+    } else {
+      await logAudit(req.user.id, 'BRIEF_UPDATE', req.params.id, req.params.id, `Brief details updated by user.`, req);
+    }
+
+    res.json({ message: 'Client brief updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/clients/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const client = await db('client_workspaces').where({ id: req.params.id }).first();
+    if (!client) {
+      return res.status(404).json({ message: 'Client workspace not found.' });
+    }
+
+    await logAudit(req.user.id, 'WORKSPACE_DELETION', req.params.id, req.params.id, `Workspace "${client.name}" deleted by admin.`, req);
+    await db('client_workspaces').where({ id: req.params.id }).del();
+
+    res.json({ message: 'Client workspace deleted successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// FILE INGESTION ENDPOINTS
+// ----------------------------------------------------
+
+app.post('/api/clients/:id/evidence/upload', authenticateToken, checkClientAccess, (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ message: err.message });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file received.' });
+    }
+
+    try {
+      const evidenceId = 'ev_upload_' + Math.floor(Math.random() * 10000000);
+      const originalName = req.file.originalname;
+      const safeName = req.file.filename;
+      const sizeBytes = req.file.size;
+      const mimeType = req.file.mimetype;
+      const step = req.body.onboardingStep || 'General Evidence';
+      const campaignId = req.body.campaignId || null;
+
+      const newEvidence = {
+        id: evidenceId,
+        clientId: req.params.id,
+        campaignId: campaignId,
+        name: safeName,
+        originalName: originalName,
+        filePath: `storage/uploads/${safeName}`,
+        fileSize: sizeBytes,
+        contentType: mimeType,
+        onboardingStep: step,
+        sourceType: req.body.sourceType || 'PDF',
+        verificationStatus: req.body.verificationStatus || 'Verified',
+        textExcerpt: req.body.textExcerpt || `Ingested file: ${originalName}`,
+        uploadedBy: req.user.id
+      };
+
+      await db('evidence').insert(newEvidence);
+      await logAudit(req.user.id, 'FILE_UPLOAD', req.params.id, evidenceId, `Uploaded evidence file "${originalName}" (Size: ${sizeBytes} bytes).`, req);
+
+      res.status(201).json(newEvidence);
+    } catch (dbErr) {
+      res.status(500).json({ message: dbErr.message });
+    }
+  });
+});
+
+app.post('/api/clients/:id/meetings', authenticateToken, checkClientAccess, (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ message: err.message });
+    }
+
+    try {
+      const ext = req.file ? path.extname(req.file.originalname).toLowerCase() : '.txt';
+      const meetingId = 'meet_upload_' + Math.floor(Math.random() * 10000000);
+      
+      const newMeeting = {
+        id: meetingId,
+        clientId: req.params.id,
+        campaignId: req.body.campaignId || null,
+        title: req.body.title || 'Alignment Meeting',
+        date: req.body.date || new Date().toISOString().split('T')[0],
+        notes: req.body.notes || 'Zoom transcript processed.',
+        transcript: req.body.transcript || (req.file ? `[Transcript contents of ${req.file.originalname}]` : ''),
+        status: 'Processed',
+        recordingFile: req.body.recordingFile || '',
+        transcriptFile: req.file ? req.file.filename : '',
+        transcriptFormat: ext,
+        attendees: req.body.attendees || ''
+      };
+
+      await db('meetings').insert(newMeeting);
+      
+      if (req.file) {
+        await logAudit(req.user.id, 'FILE_UPLOAD', req.params.id, meetingId, `Uploaded Zoom meeting transcript "${req.file.originalname}".`, req);
+      }
+      await logAudit(req.user.id, 'MEETING_INGESTION', req.params.id, meetingId, `Ingested meeting record "${newMeeting.title}".`, req);
+
+      res.status(201).json(newMeeting);
+    } catch (dbErr) {
+      res.status(500).json({ message: dbErr.message });
+    }
+  });
+});
+
+// ----------------------------------------------------
+// AI GENERATION & OUTPUTS (ENFORCED DB CHECKS)
+// ----------------------------------------------------
+
+app.post('/api/ai-outputs', authenticateToken, async (req, res) => {
+  const output = req.body;
+  const targetClientId = output.clientId || output.client_id;
+
+  if (!targetClientId) {
+    return res.status(400).json({ message: 'clientId is required.' });
+  }
+
+  try {
+    const client = await db('client_workspaces').where({ id: targetClientId }).first();
+    if (!client) {
+      return res.status(404).json({ message: 'Client workspace not found.' });
+    }
+
+    if (!client.isBriefApproved) {
+      return res.status(403).json({
+        message: `Lockout Error: AI content generation is locked for client "${client.name}" until their workspace brief is approved.`
+      });
+    }
+
+    const final_source_evidence_id = output.sourceEvidenceId || output.source_evidence_id || null;
+    const final_source_meeting_id = output.sourceMeetingId || output.source_meeting_id || null;
+    const final_source_manual_entry_id = output.sourceManualEntryId || output.source_manual_entry_id || null;
+
+    let sourcesCount = 0;
+    if (final_source_evidence_id) sourcesCount++;
+    if (final_source_meeting_id) sourcesCount++;
+    if (final_source_manual_entry_id) sourcesCount++;
+
+    if (sourcesCount !== 1) {
+      return res.status(400).json({
+        message: 'Validation failure: Every AI output must reference exactly one source ID from: sourceEvidenceId, sourceMeetingId, or sourceManualEntryId.'
+      });
+    }
+
+    const outputId = 'out_' + Math.floor(Math.random() * 10000000);
+    const newOut = {
+      id: outputId,
+      clientId: targetClientId,
+      campaignId: output.campaignId || output.campaign_id || null,
+      agentId: output.agentId || output.agent_id || 'socialmedia',
+      outputType: output.outputType || output.output_type || 'Social Post',
+      content: output.content || 'Draft content text.',
+      confidenceScore: parseInt(output.confidenceScore || output.confidence_score) || 95,
+      verificationStatus: output.verificationStatus || 'Verified',
+      approvalStatus: 'Draft',
+      sourceEvidenceId: final_source_evidence_id,
+      sourceMeetingId: final_source_meeting_id,
+      sourceManualEntryId: final_source_manual_entry_id
+    };
+
+    await db('ai_outputs').insert(newOut);
+    await logAudit(req.user.id, 'CONTENT_DRAFT_GEN', targetClientId, outputId, `AI Agent compiled new draft of type "${newOut.outputType}".`, req);
+
+    res.status(201).json(newOut);
+  } catch (err) {
+    if (err.message.includes('chk_single_source')) {
+      return res.status(400).json({ message: 'Validation failure: Database level check failed. Exactly one source column must be set.' });
+    }
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/ai-outputs/:id/status', authenticateToken, async (req, res) => {
+  const { status, approvedBy = 'Irene K.' } = req.body;
+  if (!status) {
+    return res.status(400).json({ message: 'Status is required.' });
+  }
+
+  try {
+    const out = await db('ai_outputs').where({ id: req.params.id }).first();
+    if (!out) {
+      return res.status(404).json({ message: 'AI Output not found.' });
+    }
+
+    const timestamp = new Date().toISOString();
+    const updates = {
+      approvalStatus: status,
+      updated_at: timestamp
+    };
+
+    if (status === 'Approved' || status === 'Client Approved') {
+      updates.approvedBy = approvedBy;
+      updates.approvedAt = timestamp;
+      await logAudit(req.user.id, 'CONTENT_APPROVAL', out.clientId, out.id, `Approved draft. Status changed to "${status}".`, req);
+    } else if (status === 'Scheduled') {
+      updates.scheduledBy = approvedBy;
+      updates.scheduledAt = timestamp;
+      await logAudit(req.user.id, 'SCHEDULING', out.clientId, out.id, `Scheduled post.`, req);
+    } else if (status === 'Published') {
+      updates.publishedBy = approvedBy;
+      updates.publishedAt = timestamp;
+      await logAudit(req.user.id, 'PUBLISHING', out.clientId, out.id, `Published content post live.`, req);
+    } else {
+      updates.approvedBy = null;
+      updates.approvedAt = null;
+      updates.scheduledBy = null;
+      updates.scheduledAt = null;
+      updates.publishedBy = null;
+      updates.publishedAt = null;
+    }
+
+    await db('ai_outputs').where({ id: req.params.id }).update(updates);
+    res.json({ message: 'Status updated successfully.', updates });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// PROPOSED SHIFTS & TRANSACTIONAL VERSION CONTROL
+// ----------------------------------------------------
+
+app.post('/api/clients/:id/change-logs/propose', authenticateToken, async (req, res) => {
+  const { meetingId, changes = [] } = req.body;
+  const mId = meetingId || req.body.meeting_id;
+  
+  try {
+    await db('change_logs').where({ clientId: req.params.id, status: 'Pending' }).del();
+
+    const changeLogId = 'log-' + Math.floor(Math.random() * 10000000);
+    
+    await db.transaction(async trx => {
+      await trx('change_logs').insert({
+        id: changeLogId,
+        clientId: req.params.id,
+        meetingId: mId,
+        status: 'Pending'
+      });
+
+      const detailsRows = changes.map(c => ({
+        id: 'det-' + Math.floor(Math.random() * 10000000),
+        changeLogId: changeLogId,
+        field: c.field,
+        label: c.label,
+        oldVal: c.oldVal || c.old_value || '',
+        newVal: c.newVal || c.new_value || '',
+        reason: c.reason || ''
+      }));
+
+      if (detailsRows.length > 0) {
+        await trx('change_log_details').insert(detailsRows);
+      }
+    });
+
+    res.status(201).json({ id: changeLogId, message: 'Proposed change log registered.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/change-logs/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
+  const logId = req.params.id;
+  const username = req.user.name;
+
+  try {
+    const log = await db('change_logs').where({ id: logId }).first();
+    if (!log) {
+      return res.status(404).json({ message: 'Change log not found.' });
+    }
+
+    const proposedDetails = await db('change_log_details').where({ changeLogId: logId });
+
+    await db.transaction(async trx => {
+      await trx('change_logs').where({ id: logId }).update({
+        status: 'Approved',
+        approvedBy: username,
+        approvedAt: new Date().toISOString()
+      });
+
+      for (const d of proposedDetails) {
+        await trx('client_workspaces')
+          .where({ id: log.clientId })
+          .update({ [d.field]: d.newVal });
+
+        await trx('change_log_history').insert({
+          id: 'hist-' + Math.floor(Math.random() * 10000000),
+          clientId: log.clientId,
+          meetingId: log.meetingId,
+          field: d.field,
+          label: d.label,
+          oldValue: d.oldVal,
+          newValue: d.newVal,
+          reason: d.reason,
+          approvedBy: username,
+          approvedAt: new Date().toISOString()
+        });
+      }
+    });
+
+    await logAudit(req.user.id, 'CHANGE_LOG_APPROVAL', log.clientId, logId, `Approved proposed brief updates from alignment meeting.`, req);
+    res.json({ message: 'Proposed Change Log approved and successfully applied to client brief.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/clients/:id/change-logs', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const logs = await db('change_logs').where({ clientId: req.params.id });
+    const fullLogs = [];
+    for (const l of logs) {
+      const details = await db('change_log_details').where({ changeLogId: l.id });
+      fullLogs.push({ ...l, changes: details });
+    }
+    res.json(fullLogs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/clients/:id/change-log-history', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const hist = await db('change_log_history').where({ clientId: req.params.id }).orderBy('approvedAt', 'desc');
+    res.json(hist);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// READ SPECIFIC ARTIFACT LISTS (DASHBOARD VIEWS)
+// ----------------------------------------------------
+
+app.get('/api/clients/:id/evidence', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('evidence').where({ clientId: req.params.id }).orderBy('uploadedAt', 'desc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/clients/:id/meetings-list', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('meetings').where({ clientId: req.params.id }).orderBy('date', 'desc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/clients/:id/ai-outputs', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('ai_outputs').where({ clientId: req.params.id }).orderBy('createdAt', 'desc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/clients/:id/reports', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('reports').where({ clientId: req.params.id }).orderBy('dueDate', 'asc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/clients/:id/campaigns', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('campaigns').where({ clientId: req.params.id }).orderBy('createdAt', 'desc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/clients/:id/campaigns', authenticateToken, checkClientAccess, async (req, res) => {
+  const c = req.body;
+  if (!c.name) {
+    return res.status(400).json({ message: 'Campaign Name is required.' });
+  }
+  try {
+    const newCamp = {
+      id: c.id || 'cmp_' + Math.floor(Math.random() * 10000000),
+      clientId: req.params.id,
+      name: c.name,
+      goal: c.goal || '',
+      description: c.description || '',
+      priority: c.priority || 'Medium',
+      startDate: c.startDate || null,
+      endDate: c.endDate || null,
+      targetPlatforms: c.targetPlatforms || '',
+      monthlyContentTarget: c.monthlyContentTarget || '',
+      mainMessage: c.mainMessage || '',
+      callToAction: c.callToAction || '',
+      projectLead: c.projectLead || '',
+      relatedFunder: c.relatedFunder || '',
+      status: c.status || 'Active'
+    };
+    await db('campaigns').insert(newCamp);
+    res.status(201).json(newCamp);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/clients/:id/audit-logs', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('audit_logs').where({ clientId: req.params.id }).orderBy('createdAt', 'desc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// SERVER LAUNCH
+// ----------------------------------------------------
+
+app.listen(PORT, async () => {
+  console.log(`Express API Server listening on port ${PORT}`);
+  try {
+    await initDb();
+  } catch (dbErr) {
+    console.error('Failed to initialize database tables on startup:', dbErr);
+  }
+});

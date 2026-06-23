@@ -16,7 +16,14 @@ import {
   addEvidence,
   addAiOutput,
   updateAiOutputStatus,
-  updateClientBrief
+  updateClientBrief,
+  addClientWorkspace,
+  proposeMeetingChangeLog,
+  approveMeetingChangeLog,
+  rejectMeetingChangeLog,
+  simulateMeetingAgentAnalysis,
+  addMeeting,
+  deleteClientWorkspace
 } from './state.js';
 
 import { renderLineChart, renderBarChart } from './chart.js';
@@ -633,9 +640,14 @@ export function renderClientsModule(container) {
         <div class="client-card card hover-card-clickable" data-client-id="${c.id}">
           <div class="client-card-top">
             <span class="client-card-logo">${c.logo}</span>
-            <span class="status-badge ${c.status}">
-              <span class="dot"></span> ${c.statusText}
-            </span>
+            <div style="display:flex; gap:0.4rem; align-items:center;">
+              <span class="status-badge ${c.status}">
+                <span class="dot"></span> ${c.statusText}
+              </span>
+              ${state.currentUserRole === 'admin' ? `
+                <button type="button" class="btn-delete-workspace" data-id="${c.id}" style="background:none; border:none; cursor:pointer; font-size:1.15rem; color:#ef4444; padding:0.2rem; margin-top:-2px;" title="Delete Workspace">🗑️</button>
+              ` : ''}
+            </div>
           </div>
           <h3 class="client-card-name">${c.name}</h3>
           <p class="client-card-sector">${c.sector}</p>
@@ -671,6 +683,25 @@ export function renderClientsModule(container) {
   const statusFilter = document.getElementById('clientStatusFilter');
   const gridContainer = document.getElementById('clientsGridContainer');
 
+  const bindDeleteListeners = () => {
+    gridContainer.querySelectorAll('.btn-delete-workspace').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation(); // Avoid opening the client profile
+        const id = btn.getAttribute('data-id');
+        const clName = state.clients.find(c => c.id === id)?.name || 'this workspace';
+        if (confirm(`Are you sure you want to permanently delete the workspace "${clName}"? This will delete all associated campaigns, meetings, evidence, reports, and AI logs.`)) {
+          try {
+            await deleteClientWorkspace(id);
+            alert(`Workspace "${clName}" has been successfully deleted.`);
+            renderClientsModule(container); // Re-render page
+          } catch (err) {
+            alert('Failed to delete workspace: ' + err.message);
+          }
+        }
+      });
+    });
+  };
+
   const filterClients = () => {
     const query = searchInput.value.toLowerCase();
     const filterStatus = statusFilter.value;
@@ -687,9 +718,14 @@ export function renderClientsModule(container) {
       <div class="client-card card hover-card-clickable" data-client-id="${c.id}">
         <div class="client-card-top">
           <span class="client-card-logo">${c.logo}</span>
-          <span class="status-badge ${c.status}">
-            <span class="dot"></span> ${c.statusText}
-          </span>
+          <div style="display:flex; gap:0.4rem; align-items:center;">
+            <span class="status-badge ${c.status}">
+              <span class="dot"></span> ${c.statusText}
+            </span>
+            ${state.currentUserRole === 'admin' ? `
+              <button type="button" class="btn-delete-workspace" data-id="${c.id}" style="background:none; border:none; cursor:pointer; font-size:1.15rem; color:#ef4444; padding:0.2rem; margin-top:-2px;" title="Delete Workspace">🗑️</button>
+            ` : ''}
+          </div>
         </div>
         <h3 class="client-card-name">${c.name}</h3>
         <p class="client-card-sector">${c.sector}</p>
@@ -726,6 +762,7 @@ export function renderClientsModule(container) {
         window.location.hash = `#clients?id=${id}`;
       });
     });
+    bindDeleteListeners();
   };
 
   if (searchInput && statusFilter) {
@@ -741,6 +778,7 @@ export function renderClientsModule(container) {
       window.location.hash = `#clients?id=${id}`;
     });
   });
+  bindDeleteListeners();
 
   // Add new client btn trigger
   const newClientBtn = document.getElementById('addNewClientBtn');
@@ -766,8 +804,13 @@ function renderClientProfile(container, clientId) {
   const metrics = state.impactMetrics[client.id] || { peopleReached: 0, campaignReach: 0, reportsSubmitted: 0, fundingSecured: 0, customMetrics: [] };
 
   container.innerHTML = `
-    <div class="profile-back-row">
+    <div class="profile-back-row" style="display:flex; justify-content:space-between; align-items:center;">
       <a href="#clients" class="back-link">← Back to Clients Database</a>
+      ${state.currentUserRole === 'admin' ? `
+        <button type="button" class="btn btn-danger btn-sm" id="btnDeleteProfileWorkspace" style="background-color:#ef4444; border-color:#ef4444; color:white; font-weight:700; border:none; padding:0.4rem 0.8rem; border-radius:6px; cursor:pointer; font-size:0.8rem; display:flex; align-items:center; gap:0.25rem;" title="Delete Workspace">
+          🗑️ Delete NGO Workspace
+        </button>
+      ` : ''}
     </div>
 
     <div class="profile-header-card card mt-4">
@@ -847,6 +890,7 @@ function renderClientProfile(container, clientId) {
           <button class="profile-tab-btn" data-tab="content">Content (${clientContent.length})</button>
           <button class="profile-tab-btn" data-tab="funding">Funding Opps (${clientFunding.length})</button>
           <button class="profile-tab-btn" data-tab="recommendations">AI Recommendations</button>
+          <button class="profile-tab-btn" data-tab="meeting-intel">Meeting Intel & logs</button>
         </div>
 
         <div class="tab-body mt-4" id="profileTabBody">
@@ -883,6 +927,41 @@ function renderClientProfile(container, clientId) {
                 `).join('')}
               </div>
             ` : ''}
+
+            <!-- Social Media Baseline Grid -->
+            <h4 class="mt-6">📢 Social Media Starting Baseline</h4>
+            <div class="impact-grid-mini mt-4" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+              <div class="impact-stat-mini" style="border-left: 4px solid #1877f2; background: white;">
+                <span class="lbl" style="color:#1877f2; font-weight:700;">📘 Facebook Baseline</span>
+                <span class="val" style="font-size:0.85rem; font-weight:700; word-break: break-all; margin:0.25rem 0;">
+                  ${client.fbPageUrl ? `<a href="${client.fbPageUrl}" target="_blank" style="color: #1877f2; text-decoration: underline;">View Page</a>` : 'Not Connected'}
+                </span>
+                <div style="font-size:0.7rem; color:#475569; line-height:1.4;">
+                  👥 Followers: <strong>${(client.fbFollowers || 0).toLocaleString()}</strong><br/>
+                  📈 Reach: <strong>${(client.fbAvgReach || 0).toLocaleString()}</strong><br/>
+                  ⚡ Engagement: <strong>${client.fbAvgEngagement || 0.0}%</strong>
+                </div>
+              </div>
+              <div class="impact-stat-mini" style="border-left: 4px solid #c13584; background: white;">
+                <span class="lbl" style="color:#c13584; font-weight:700;">📸 Instagram Baseline</span>
+                <span class="val" style="font-size:0.85rem; font-weight:700; margin:0.25rem 0;">
+                  ${client.igHandle || 'Not Connected'}
+                </span>
+                <div style="font-size:0.7rem; color:#475569; line-height:1.4;">
+                  👥 Followers: <strong>${(client.igFollowers || 0).toLocaleString()}</strong><br/>
+                  📈 Reach: <strong>${(client.igAvgReach || 0).toLocaleString()}</strong><br/>
+                  ⚡ Engagement: <strong>${client.igAvgEngagement || 0.0}%</strong>
+                </div>
+              </div>
+              <div class="impact-stat-mini" style="border-left: 4px solid #10b981; background: white; grid-column: span 2;">
+                <span class="lbl" style="color:#10b981; font-weight:700;">📅 Baseline Context</span>
+                <div style="font-size:0.7rem; color:#334155; line-height:1.4; margin-top:0.25rem;">
+                  📅 Start Date: <strong>${client.baselineStartDate || 'None'}</strong><br/>
+                  👥 Demographics: <strong>${client.baselineDemographics || 'N/A'}</strong><br/>
+                  🔥 Top Posts: <strong>${client.baselineTopPosts || 'N/A'}</strong>
+                </div>
+              </div>
+            </div>
 
             <h4 class="mt-6">Performance Trend</h4>
             <div id="profileTrendChart" class="chart-container mt-4"></div>
@@ -1030,14 +1109,97 @@ function renderClientProfile(container, clientId) {
                 </div>
               </div>
             </div>
+
+            <!-- Meeting Intel & Logs Tab -->
+            <div class="tab-pane" id="tab-meeting-intel">
+              <div style="background:#e0f2fe; border:1px solid #bae6fd; padding:0.75rem; border-radius:8px; color:#0369a1; font-size:0.8rem; font-weight:600; display:flex; gap:0.4rem; align-items:center; margin-bottom:1rem;">
+                <span>💡</span>
+                <span>[PROTOTYPE ONLY] File uploads and transcript scanning are simulated. The Meeting Agent requires human approval before updating client parameters.</span>
+              </div>
+
+              <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:1.5rem;">
+                <!-- Left Column: Upload and Propose -->
+                <div>
+                  <div class="card p-4" style="background:#f8fafc; border:1px solid var(--border-color); border-radius:8px; margin-bottom:1rem;">
+                    <h4 style="margin:0 0 0.5rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">🤖 Run Meeting Agent on New Transcript</h4>
+                    
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.5rem;">
+                      <div class="form-group">
+                        <label>Meeting Date</label>
+                        <input type="date" id="profileMeetingDate" value="${new Date().toISOString().split('T')[0]}" style="font-size:0.75rem;" />
+                      </div>
+                      <div class="form-group">
+                        <label>Campaign Linkage</label>
+                        <select id="profileMeetingCampaign" style="font-size:0.75rem; height:30px;">
+                          <option value="General">General Workspace (No Campaign)</option>
+                          ${clientCampaigns.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="form-group mt-2">
+                      <label>Attendees List</label>
+                      <input type="text" id="profileMeetingAttendees" placeholder="e.g. Bobby Peek, Irene K." style="font-size:0.75rem;" />
+                    </div>
+
+                    <div style="background:#f1f5f9; padding:0.75rem; border-radius:6px; margin-top:0.75rem; border:1px solid #e2e8f0; display:flex; flex-direction:column; gap:0.5rem;">
+                      <span style="font-size:0.7rem; font-weight:700; color:#475569; display:block;">📹 ZOOM AUDIO/VIDEO RECORDING [PROTOTYPE]</span>
+                      <div class="form-group" style="margin:0;">
+                        <input type="text" id="profileMeetingRecordingFile" placeholder="e.g. GMT20260623_Zoom_Recording.mp4" style="font-size:0.75rem;" />
+                      </div>
+
+                      <span style="font-size:0.7rem; font-weight:700; color:#475569; display:block; margin-top:0.25rem;">📄 ZOOM TRANSCRIPT FILE (.txt, .docx, .pdf, .vtt, .srt)</span>
+                      <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <input type="file" id="profileMeetingTranscriptFile" accept=".vtt,.srt,.txt,.docx,.pdf" style="font-size:0.75rem; flex-grow:1;" />
+                      </div>
+                    </div>
+
+                    <div class="form-group mt-3">
+                      <label>Paste Meeting Notes / Transcript Text</label>
+                      <textarea id="profileMeetingNotesText" style="height:100px; font-size:0.8rem;" placeholder="Paste text here..."></textarea>
+                    </div>
+                    
+                    <button class="btn btn-sm btn-primary mt-3" id="profileRunMeetingAgentBtn" style="background:#4f46e5; border-color:#4f46e5; font-weight:700; width:100%;">🧠 Ingest & Scan Meeting</button>
+                    
+                    <!-- Loader -->
+                    <div id="profileMeetingAgentLoader" style="display:none; text-align:center; padding:1rem; color:#4f46e5; font-size:0.75rem;">
+                      <div style="border: 2px solid #f3f3f3; border-top: 2px solid #4f46e5; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; margin: 0 auto 0.5rem auto;"></div>
+                      Analyzing notes for strategic shifts...
+                    </div>
+                  </div>
+
+                  <!-- Proposed Change Logs -->
+                  <div id="owProposedChangeLogsArea">
+                    \${renderProposedChangeLogsHtml(client.id)}
+                  </div>
+                </div>
+
+                <!-- Right Column: Version History Timeline & Past Meetings -->
+                <div>
+                  <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:8px; margin-bottom:1rem;">
+                    <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem; text-transform:none;">📜 Approved Version History</h4>
+                    <div id="owVersionHistoryArea">
+                      \${renderVersionHistoryHtml(client.id)}
+                    </div>
+                  </div>
+
+                  <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:8px;">
+                    <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem; text-transform:none;">📅 Processed Meetings Log</h4>
+                    <div id="owMeetingsLogArea">
+                      \${renderMeetingsLogHtml(client.id)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
+
       </div>
+    `;
 
-    </div>
-  `;
-
-  // Draw trend chart
+    // Draw trend chart
   if (metrics.monthlyTrends) {
     const chartData = metrics.monthlyTrends.map(t => ({ label: t.month, value: t.reached }));
     setTimeout(() => {
@@ -1075,6 +1237,295 @@ function renderClientProfile(container, clientId) {
       });
     });
   });
+
+  // Bind meeting-intel run agent
+  const runProfileAgentBtn = container.querySelector('#profileRunMeetingAgentBtn');
+  if (runProfileAgentBtn) {
+    runProfileAgentBtn.addEventListener('click', async () => {
+      const text = container.querySelector('#profileMeetingNotesText').value.trim();
+      const fileInput = container.querySelector('#profileMeetingTranscriptFile');
+      const file = fileInput ? fileInput.files[0] : null;
+
+      if (!text && !file) {
+        alert('Please enter meeting transcript or notes, or upload a transcript file.');
+        return;
+      }
+      
+      const dateVal = container.querySelector('#profileMeetingDate').value;
+      const campaignVal = container.querySelector('#profileMeetingCampaign').value;
+      const attendeesVal = container.querySelector('#profileMeetingAttendees').value.trim();
+      const recordingVal = container.querySelector('#profileMeetingRecordingFile').value.trim();
+
+      const loader = container.querySelector('#profileMeetingAgentLoader');
+      if (loader) loader.style.display = 'block';
+      runProfileAgentBtn.style.display = 'none';
+
+      // Read text if file is uploaded and notes are empty
+      let transcriptText = text;
+      if (file && !transcriptText) {
+        try {
+          if (file.name.endsWith('.txt') || file.name.endsWith('.vtt') || file.name.endsWith('.srt')) {
+            transcriptText = await file.text();
+            const textArea = container.querySelector('#profileMeetingNotesText');
+            if (textArea) textArea.value = transcriptText;
+          } else {
+            transcriptText = `[Transcript file: ${file.name}]`;
+          }
+        } catch (err) {
+          console.error('Failed to read transcript file contents:', err);
+          transcriptText = `[Error reading transcript file: ${file.name}]`;
+        }
+      }
+
+      setTimeout(async () => {
+        try {
+          const analysis = simulateMeetingAgentAnalysis(transcriptText);
+          
+          let newMeeting = null;
+          const meetingDate = dateVal || new Date().toISOString().split('T')[0];
+
+          if (file) {
+            const meetingData = new FormData();
+            meetingData.append('file', file);
+            meetingData.append('title', `Zoom Ingestion: ${file.name}`);
+            meetingData.append('date', meetingDate);
+            meetingData.append('notes', analysis.summary);
+            meetingData.append('transcript', transcriptText);
+            meetingData.append('recordingFile', recordingVal);
+            meetingData.append('attendees', attendeesVal);
+            if (campaignVal !== 'General') {
+              meetingData.append('campaignId', campaignVal);
+            }
+            newMeeting = await addMeeting(meetingData);
+          } else {
+            newMeeting = await addMeeting({
+              clientId: client.id,
+              campaignId: campaignVal === 'General' ? null : campaignVal,
+              title: 'Subsequent Strategy Session',
+              date: meetingDate,
+              notes: analysis.summary,
+              transcript: transcriptText,
+              recordingFile: recordingVal,
+              attendees: attendeesVal
+            });
+          }
+
+          // Add matching evidence file to Evidence Inbox
+          if (file) {
+            const evidenceData = new FormData();
+            evidenceData.append('file', file);
+            evidenceData.append('onboardingStep', 'Evidence & Notes');
+            if (campaignVal !== 'General') {
+              evidenceData.append('campaignId', campaignVal);
+            }
+            evidenceData.append('sourceType', file.name.endsWith('.pdf') ? 'PDF' : (file.name.endsWith('.docx') ? 'Word' : 'Text'));
+            evidenceData.append('verificationStatus', 'Verified');
+            evidenceData.append('textExcerpt', transcriptText);
+            await addEvidence(evidenceData);
+          } else {
+            await addEvidence({
+              clientId: client.id,
+              campaignId: campaignVal === 'General' ? null : campaignVal,
+              name: 'meeting_notes_' + new Date().toISOString().split('T')[0].replace(/-/g, '_') + '.txt',
+              originalName: 'meeting_notes_' + new Date().toISOString().split('T')[0].replace(/-/g, '_') + '.txt',
+              filePath: '',
+              fileSize: transcriptText.length,
+              contentType: 'text/plain',
+              onboardingStep: 'Evidence & Notes',
+              sourceType: 'Text',
+              verificationStatus: 'Verified',
+              textExcerpt: transcriptText
+            });
+          }
+
+          if (analysis.changes.length > 0 && newMeeting && newMeeting.id) {
+            await proposeMeetingChangeLog(client.id, newMeeting.id, analysis.changes);
+            alert('🧠 Meeting Intelligence Agent: Strategic Shifts Detected!\nA proposed Change Log requires human approval before updating client briefs.');
+          } else {
+            alert('🧠 Meeting Intelligence Agent: Notes analyzed.\nNo strategic shifts detected in the brief.');
+          }
+          
+          const txtarea = container.querySelector('#profileMeetingNotesText');
+          if (txtarea) txtarea.value = '';
+          
+          const recInput = container.querySelector('#profileMeetingRecordingFile');
+          if (recInput) recInput.value = '';
+          
+          const transInput = container.querySelector('#profileMeetingTranscriptFile');
+          if (transInput) transInput.value = '';
+
+          const attendeesInput = container.querySelector('#profileMeetingAttendees');
+          if (attendeesInput) attendeesInput.value = '';
+
+          // Reload workspace details
+          await loadClientWorkspaceData(client.id);
+          renderClientProfile(container, client.id);
+        } catch (err) {
+          alert('Failed to run meeting agent: ' + err.message);
+        } finally {
+          if (loader) loader.style.display = 'none';
+          runProfileAgentBtn.style.display = 'block';
+        }
+      }, 1500);
+    });
+  }
+
+  // Bind change log approve/reject buttons
+  container.querySelectorAll('.ow-approve-shift').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const logId = btn.getAttribute('data-log-id');
+      approveMeetingChangeLog(logId, 'Irene K.');
+      alert('Approved shifts! Client profile and other agents have been successfully updated.');
+      renderClientProfile(container, client.id);
+    });
+  });
+
+  container.querySelectorAll('.ow-reject-shift').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const logId = btn.getAttribute('data-log-id');
+      rejectMeetingChangeLog(logId);
+      alert('Proposed shifts discarded.');
+      renderClientProfile(container, client.id);
+    });
+  });
+
+  const deleteBtn = container.querySelector('#btnDeleteProfileWorkspace');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async () => {
+      const clName = client.name || 'this workspace';
+      if (confirm(`Are you sure you want to permanently delete the workspace "${clName}"? This will delete all associated campaigns, meetings, evidence, reports, and AI logs.`)) {
+        try {
+          await deleteClientWorkspace(client.id);
+          alert(`Workspace "${clName}" has been successfully deleted.`);
+          window.location.hash = '#clients';
+        } catch (err) {
+          alert('Failed to delete workspace: ' + err.message);
+        }
+      }
+    });
+  }
+}
+
+// Sub-renderers for Meeting Intel Tab
+function renderProposedChangeLogsHtml(client_id) {
+  const pendingLogs = state.changeLogs.filter(l => l.client_id === client_id && l.status === 'Pending');
+  if (pendingLogs.length === 0) {
+    return `<div style="font-size:0.8rem; color:var(--text-muted); font-style:italic; text-align:center; padding:1rem; border:1px dashed var(--border-color); border-radius:8px;">No pending strategic shifts detected. The agents are aligned with current client brief.</div>`;
+  }
+
+  return pendingLogs.map(log => `
+    <div class="proposed-changelog-box" style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:1rem; margin-top:1rem; font-size:0.8rem; line-height:1.4; color:#78350f;">
+      <h4 style="margin:0 0 0.5rem 0; color:#b45309; font-size:0.85rem; font-weight:700; display:flex; justify-content:space-between; align-items:center; text-transform:none;">
+        <span>⚠️ Strategic Shifts Detected</span>
+        <span style="font-size:0.65rem; background:#fef3c7; padding:0.1rem 0.35rem; border-radius:4px; font-weight:700; color:#b45309;">Approval Required</span>
+      </h4>
+      <p style="font-size:0.75rem; margin-bottom:0.75rem; color:#78350f;">The Meeting Agent scanned the notes and detected differences between the conversation and the current active client profile. Confirm to update other AI agents.</p>
+      
+      <div style="background:white; border:1px solid #fcd34d; border-radius:6px; overflow:hidden; margin-bottom:1rem;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; color:#0f172a;">
+          <thead>
+            <tr style="background:#fef3c7; color:#78350f;">
+              <th style="padding:0.4rem 0.6rem; border-bottom:1px solid #fcd34d;">Parameter</th>
+              <th style="padding:0.4rem 0.6rem; border-bottom:1px solid #fcd34d;">Current Value</th>
+              <th style="padding:0.4rem 0.6rem; border-bottom:1px solid #fcd34d;">Proposed Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${log.changes.map(ch => `
+              <tr style="border-bottom:1px solid #fef3c7;">
+                <td style="padding:0.4rem 0.6rem; font-weight:600; vertical-align:top; color:#b45309;">${ch.label}</td>
+                <td style="padding:0.4rem 0.6rem; vertical-align:top; color:#64748b;">${ch.oldVal}</td>
+                <td style="padding:0.4rem 0.6rem; vertical-align:top; font-weight:600; color:#059669; background:#f0fdf4;">${ch.newVal}<div style="font-size:0.65rem; color:#047857; font-weight:normal; margin-top:0.15rem;">Reason: ${ch.reason}</div></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+        <button class="btn btn-xs btn-outline ow-reject-shift" data-log-id="${log.id}" style="color:#b91c1c; border-color:#fca5a5;">Reject Shifts</button>
+        <button class="btn btn-xs btn-primary ow-approve-shift" data-log-id="${log.id}" style="background:#059669; border-color:#059669; color:white; font-weight:700;">Approve & Update Agents</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderVersionHistoryHtml(client_id) {
+  const history = state.changeLogHistory.filter(h => h.client_id === client_id);
+  if (history.length === 0) {
+    return `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic; padding:0.5rem 0;">No approved changes recorded yet. This client workspace is running on the original onboarding brief.</div>`;
+  }
+
+  return `
+    <div style="display:flex; flex-direction:column; gap:0.5rem; max-height:220px; overflow-y:auto; padding-right:0.25rem;">
+      ${history.map(h => `
+        <div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:6px; padding:0.6rem; font-size:0.75rem; line-height:1.4;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem; font-size:0.7rem; color:var(--text-muted);">
+            <strong>Shifted: ${h.label}</strong>
+            <span>${h.approvedAt.substring(0,10)} ${h.approvedAt.substring(11,16)}</span>
+          </div>
+          <div style="margin-bottom:0.25rem;">
+            <span style="text-decoration:line-through; color:#94a3b8;">${h.oldValue}</span>
+            <span style="color:#059669; font-weight:600;"> → ${h.newValue}</span>
+          </div>
+          <div style="font-size:0.7rem; color:#64748b; margin-top:0.2rem; background:white; padding:0.3rem 0.5rem; border-radius:4px; border:1px solid #e2e8f0;">
+            <strong>Reason:</strong> ${h.reason}
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text-muted); margin-top:0.3rem;">
+            <span>Approved by: <strong>${h.approvedBy}</strong></span>
+            <span>Source: <strong>Meeting alignment</strong></span>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderMeetingsLogHtml(client_id) {
+  const meetings = state.meetings.filter(m => m.client_id === client_id);
+  if (meetings.length === 0) {
+    return `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic; padding:0.5rem 0;">No meetings processed for this workspace.</div>`;
+  }
+
+  return `
+    <div style="display:flex; flex-direction:column; gap:0.5rem; max-height:300px; overflow-y:auto;">
+      ${meetings.map(m => {
+        let recordingHtml = m.recording_file ? `<div style="margin-top:0.25rem; font-size:0.7rem; color:#475569;">🎥 <strong>Zoom Recording:</strong> <code>${m.recording_file}</code></div>` : '';
+        let transcriptFileHtml = m.transcript_file ? `<div style="margin-top:0.15rem; font-size:0.7rem; color:#475569;">📄 <strong>Zoom Transcript:</strong> <code>${m.transcript_file}</code> (Format: <strong>${m.transcript_format || '.txt'}</strong>)</div>` : '';
+        let attendeesHtml = m.attendees ? `<div style="margin-top:0.15rem; font-size:0.7rem; color:#475569;">👥 <strong>Attendees:</strong> ${m.attendees}</div>` : '';
+        
+        let campaignName = 'General Workspace';
+        if (m.campaign_id && m.campaign_id !== 'General') {
+          const camp = state.campaigns.find(c => c.id === m.campaign_id || c.name === m.campaign_id);
+          if (camp) campaignName = camp.name;
+          else campaignName = m.campaign_id;
+        }
+        let campaignHtml = `<div style="margin-top:0.15rem; font-size:0.7rem; color:#475569;">📢 <strong>Campaign Linkage:</strong> <span class="badge success" style="background:#e0f2fe; color:#0369a1; font-size:0.6rem; padding:0.05rem 0.25rem;">${campaignName}</span></div>`;
+
+        return `
+          <div style="border:1px solid var(--border-color); border-radius:6px; padding:0.6rem; font-size:0.75rem; line-height:1.4; background:white;">
+            <div style="display:flex; justify-content:space-between; font-weight:600; color:#0f172a; margin-bottom:0.25rem;">
+              <span>📅 ${m.date} - ${m.title}</span>
+              <span style="font-size:0.65rem; color:#059669; font-weight:700;">${m.status}</span>
+            </div>
+            <p style="margin:0; font-size:0.75rem; color:#475569;">${m.notes}</p>
+            ${recordingHtml}
+            ${transcriptFileHtml}
+            ${attendeesHtml}
+            ${campaignHtml}
+            
+            <!-- Collapsible Transcript Mock -->
+            <details style="margin-top:0.4rem; font-size:0.7rem; color:var(--text-muted);">
+              <summary style="cursor:pointer; color:var(--primary-color); font-weight:600; outline:none;">Show Meeting Transcript Excerpt</summary>
+              <div style="margin-top:0.25rem; background:#f8fafc; padding:0.4rem; border-radius:4px; font-family:monospace; white-space:pre-wrap; border:1px solid #e2e8f0; max-height:100px; overflow-y:auto; line-height:1.3;">
+                ${m.transcript}
+              </div>
+            </details>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 // RENDER CONTENT PIPELINE KANBAN BOARD
@@ -3195,6 +3646,21 @@ function renderOverviewTabContent(client, briefStatus, clientEvidence, clientOut
 }
 
 function renderCreateWorkTabContent(client, briefStatus, clientEvidence) {
+  if (!client.isBriefApproved) {
+    return `
+      <div class="agent-placeholder-alert danger p-6 rounded" style="background:#fef2f2; border:1px solid #fca5a5; color:#b91c1c; text-align:center; padding:3rem; margin:1.5rem auto; max-width:700px; border-radius:12px;">
+        <span style="font-size:3rem; display:block; margin-bottom:1rem;">🔒 AI Content Generation Locked</span>
+        <h3 style="font-size:1.35rem; font-weight:700; margin-bottom:0.75rem; color:#b91c1c; text-transform:none;">Client Onboarding Brief Pending Approval</h3>
+        <p style="font-size:0.9rem; color:#7f1d1d; max-width:600px; margin:0 auto 1.5rem auto; line-height:1.6; text-transform:none;">
+          Under the platform's strict Accuracy & Context Policy, AI agents are locked from compiling final content for <strong>${client.name}</strong> until their workspace brief has been formally reviewed and approved by a consultant.
+        </p>
+        <div>
+          <button class="btn btn-primary" id="wzOnboardUnlockBtn" style="background:#b91c1c; border-color:#991b1b; padding:0.6rem 1.5rem; font-weight:700; border-radius:8px;">✏️ Complete Onboarding Wizard</button>
+        </div>
+      </div>
+    `;
+  }
+
   // Wizard Steps Header
   const stepsHeader = `
     <div class="wizard-steps-header mb-4">
@@ -3613,12 +4079,35 @@ function renderApprovalsTabContent(client, clientOutputs) {
               <span>🔍 EVIDENCE TRACE [Confidence: ${o.confidenceScore}%]</span>
               <span style="color:${o.verificationStatus === 'Verified' ? 'var(--success-color)' : 'var(--warning-color)'};">${o.verificationStatus} Evidence</span>
             </div>
-            <div style="color:var(--text-muted); margin-bottom:0.4rem;">
-              <strong>Source File:</strong> ${o.sourceDocName || 'None'} (${o.sourceDocType || 'Unknown'}) | Uploaded: ${o.sourceDocUploadDate || 'N/A'}
+            <div style="color:var(--text-muted); margin-bottom:0.4rem; display:flex; gap:0.75rem; flex-wrap:wrap;">
+              <span><strong>Source File:</strong> ${o.sourceDocName || 'None'} (${o.sourceDocType || 'Unknown'})</span>
+              ${o.source_evidence_id ? `<span>| <strong>Evidence ID:</strong> <code>${o.source_evidence_id}</code></span>` : ''}
+              ${o.source_meeting_id ? `<span>| <strong>Meeting ID:</strong> <code>${o.source_meeting_id}</code></span>` : ''}
+              ${o.source_manual_entry_id ? `<span>| <strong>Manual Entry ID:</strong> <code>${o.source_manual_entry_id}</code></span>` : ''}
             </div>
-            <div class="evidence-trace-quote" style="font-style:italic; padding-left:0.5rem; border-left:2px solid #cbd5e1; color:#475569;">
+            <div class="evidence-trace-quote" style="font-style:italic; padding-left:0.5rem; border-left:2px solid #cbd5e1; color:#475569; margin-bottom:0.4rem;">
               "${o.sourceEvidence || 'Evidence missing. Please upload or verify source information.'}"
             </div>
+
+            ${(o.approved_by || o.approved_at) ? `
+              <div class="approval-info-box p-2 mb-1" style="background:#e6f4ea; border:1px solid #34a853; border-radius:6px; font-size:0.7rem; color:#137333; display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem; font-weight:600;">
+                <span>✔️ Approved by ${o.approved_by}</span>
+                <span>📅 ${new Date(o.approved_at).toLocaleDateString()} ${new Date(o.approved_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              </div>
+            ` : ''}
+            ${(o.scheduled_by || o.scheduled_at) ? `
+              <div class="schedule-info-box p-2 mb-1" style="background:#fffbeb; border:1px solid #f59e0b; border-radius:6px; font-size:0.7rem; color:#b45309; display:flex; justify-content:space-between; align-items:center; font-weight:600;">
+                <span>📅 Scheduled by ${o.scheduled_by}</span>
+                <span>📅 ${new Date(o.scheduled_at).toLocaleDateString()} ${new Date(o.scheduled_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              </div>
+            ` : ''}
+            ${(o.published_by || o.published_at) ? `
+              <div class="publish-info-box p-2 mb-1" style="background:#e0f2fe; border:1px solid #0284c7; border-radius:6px; font-size:0.7rem; color:#0369a1; display:flex; justify-content:space-between; align-items:center; font-weight:600;">
+                <span>📢 Published by ${o.published_by}</span>
+                <span>📅 ${new Date(o.published_at).toLocaleDateString()} ${new Date(o.published_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              </div>
+            ` : ''}
+
             <div style="font-size:0.65rem; color:#b45309; font-weight:600; margin-top:0.4rem; display:flex; align-items:center; gap:0.2rem;">
               ⚠️ Strictly evidence-based. No facts, numbers, dates or campaign results were invented by AI.
             </div>
@@ -3812,6 +4301,13 @@ function bindActiveTabEvents(container, client, briefStatus, clientEvidence, cli
 
   // Create Work Tab events
   if (crActiveTab === 'create-work') {
+    const wzOnboardUnlockBtn = document.getElementById('wzOnboardUnlockBtn');
+    if (wzOnboardUnlockBtn) {
+      wzOnboardUnlockBtn.addEventListener('click', () => {
+        openNewClientModal();
+      });
+    }
+
     const wzClientSelect = document.getElementById('wzClientSelect');
     if (wzClientSelect) {
       wzClientSelect.addEventListener('change', (e) => {
@@ -4889,141 +5385,1576 @@ function openNewIdeaModal(clientsList) {
 }
 
 // 5. Add NGO Client Modal
+// 5. Add NGO Client Onboarding Wizard
 function openNewClientModal() {
   const modal = document.getElementById('globalModalContainer');
-  modal.innerHTML = `
-    <div class="modal-dialog modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>➕ Add New NGO Client Profile</h2>
-          <button class="close-modal-btn" id="closeGlobalModal">×</button>
+  
+  let owStep = 1;
+  let owIsDemoDataLoaded = false;
+  let owMeetingSummaryApproved = false;
+  let owLoadingAnalysis = false;
+  let owMeetingText = '';
+  let owMeetingSummary = null;
+  
+  let owClient = {
+    id: '',
+    name: '',
+    logo: '🌱',
+    website: '',
+    country: '',
+    sector: '',
+    primaryContact: '',
+    keyContact: '',
+    email: '',
+    phone: '',
+    monthlyFee: 2500,
+    contractValue: 30000,
+    startDate: new Date().toISOString().split('T')[0],
+    renewalDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
+    clientStatus: 'Lead',
+    isDemo: false,
+    
+    // Baseline Social Media Metrics
+    fbPageUrl: '',
+    fbFollowers: 0,
+    fbAvgReach: 0,
+    fbAvgEngagement: 0.0,
+    igHandle: '',
+    igFollowers: 0,
+    igAvgReach: 0,
+    igAvgEngagement: 0.0,
+    baselineTopPosts: '',
+    baselineDemographics: '',
+    baselineStartDate: new Date().toISOString().split('T')[0],
+    
+    // Goals
+    goalsAchieve: '',
+    goalsProblem: '',
+    goalsTop3: '',
+    goalsSuccess: '',
+    goalsChallenges: '',
+    goalsSupport: '',
+
+    // Brand
+    mission: '',
+    shortDesc: '',
+    toneOfVoice: '',
+    writingStyle: '',
+    wordsToUse: '',
+    wordsToAvoid: '',
+    brandColours: '#15803d, #1e3a8a',
+    fonts: 'Inter, Outfit',
+    approvedHashtags: '',
+    socialHandles: '',
+    canvaTemplates: '',
+    posterExamples: '',
+
+    // Target Audience
+    targetReach: '',
+    audienceCommunity: '',
+    audienceDonor: '',
+    audienceGovernment: '',
+    audienceYouth: '',
+    audienceMedia: '',
+    locations: '',
+    ageGroups: '',
+    languages: '',
+    culturalConsiderations: '',
+    audienceUnderstanding: '',
+    audienceAction: '',
+
+    // Funders & Reporting
+    currentFunders: '',
+    grantNames: '',
+    reportingDeadlines: '',
+    requiredDonorOutputs: '',
+    donorLogoRequirements: '',
+    funderCommunicationRules: '',
+    requiredImpactMetrics: '',
+    requiredEvidence: '',
+    reportFrequency: 'Monthly'
+  };
+
+  let owCampaigns = [];
+  let owEvidence = [];
+
+  function getFileIcon(type) {
+    if (type === 'PDF') return '📄';
+    if (type === 'Word') return '📝';
+    if (type === 'Excel') return '📊';
+    if (type === 'Image') return '🖼️';
+    if (type === 'Video') return '🎥';
+    return '📎';
+  }
+
+  function renderStepAttachmentsSection(stepLabel, stepNum) {
+    const stepFiles = owEvidence.filter(e => e.onboarding_step === stepLabel);
+    let filesHtml = '';
+    if (stepFiles.length === 0) {
+      filesHtml = `<p style="font-size:0.7rem; color:#64748b; font-style:italic; margin:0;">No files attached to this step yet.</p>`;
+    } else {
+      filesHtml = `<div style="display:flex; flex-direction:column; gap:0.35rem;">
+        ${stepFiles.map(f => `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:0.4rem 0.6rem; border-radius:4px; border:1px solid #cbd5e1; font-size:0.75rem;">
+            <span>📄 <strong>${f.name}</strong> (${f.sourceType})</span>
+            <button type="button" class="btn btn-xs btn-outline ow-del-step-file" data-id="${f.id}" style="color:var(--danger-color); border-color:#fca5a5; padding:0.1rem 0.3rem; font-size:0.65rem;">Remove</button>
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    return `
+      <div class="step-attachments-section" style="margin-top:1.25rem; padding:0.75rem; background:#f1f5f9; border-radius:6px; border:1px solid #e2e8f0; width: 100%;">
+        <h4 style="margin:0 0 0.4rem 0; font-size:0.75rem; font-weight:700; color:#475569;">📎 Attach Supporting Files</h4>
+        
+        <div style="margin-bottom:0.5rem;">
+          ${filesHtml}
         </div>
-        <div class="modal-body">
-          <form id="newClientForm" class="modal-form-fields-grid">
-            <div class="form-group">
-              <label>Organisation Name</label>
-              <input type="text" id="ncName" placeholder="groundWork SA" required />
-            </div>
-            <div class="form-group">
-              <label>Logo (Emoji)</label>
-              <input type="text" id="ncLogo" placeholder="🌱" required />
-            </div>
-            <div class="form-group">
-              <label>Primary Contact</label>
-              <input type="text" id="ncContact" placeholder="Bobby Peek" required />
-            </div>
-            <div class="form-group">
-              <label>Email Address</label>
-              <input type="email" id="ncEmail" placeholder="contact@org.org" required />
-            </div>
-            <div class="form-group">
-              <label>Phone</label>
-              <input type="text" id="ncPhone" placeholder="+27 33 123" required />
-            </div>
-            <div class="form-group">
-              <label>Website URL</label>
-              <input type="text" id="ncWebsite" placeholder="www.org.org" required />
-            </div>
-            <div class="form-group">
-              <label>Sector Focus</label>
-              <input type="text" id="ncSector" placeholder="Environmental" required />
-            </div>
-            <div class="form-group">
-              <label>Country Base</label>
-              <input type="text" id="ncCountry" placeholder="South Africa" required />
-            </div>
-            <div class="form-group">
-              <label>Funding Partners</label>
-              <input type="text" id="ncFunding" placeholder="Sida, UNEP" required />
-            </div>
-            <div class="form-group">
-              <label>Monthly Fee (£)</label>
-              <input type="number" id="ncFee" placeholder="2500" required />
-            </div>
-            <div class="form-group full-width">
-              <label>Notes / Overview Directive</label>
-              <textarea id="ncNotes" placeholder="Describe client goals..." required></textarea>
-            </div>
-            
-            <button type="submit" class="btn btn-primary full-width mt-4">Save NGO Profile</button>
-          </form>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; margin-bottom:0.4rem;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label style="font-size:0.6rem; margin-bottom:0.1rem; font-weight:600;">Select File</label>
+            <input type="file" id="stepUploadFile_${stepNum}" style="font-size:0.7rem; padding:0.25rem 0.4rem; border-radius:4px; height:28px;" />
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label style="font-size:0.6rem; margin-bottom:0.1rem; font-weight:600;">File Category</label>
+            <select id="stepUploadType_${stepNum}" style="font-size:0.7rem; padding:0.25rem 0.4rem; border-radius:4px; height:28px;">
+              <option value="PDF">PDF</option>
+              <option value="Word">Word Doc</option>
+              <option value="Excel">Excel Sheet</option>
+              <option value="Image">Image / Canva Template</option>
+              <option value="Text">Text File / Transcript</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+          <div class="form-group" style="margin-bottom:0; flex-grow:1; margin-right:0.4rem;">
+            <label style="font-size:0.6rem; margin-bottom:0.1rem; font-weight:600;">Link to Campaign</label>
+            <select id="stepUploadCampaign_${stepNum}" style="font-size:0.7rem; padding:0.25rem 0.4rem; border-radius:4px; height:28px; width:100%;">
+              <option value="General">General Workspace (No specific campaign)</option>
+              ${owCampaigns.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+            </select>
+          </div>
+          <button type="button" class="btn btn-xs btn-outline ow-step-upload-btn" data-step="${stepNum}" style="border-color:#4f46e5; color:#4f46e5; height:28px; font-size:0.7rem; font-weight:700; padding:0 0.5rem;">+ Attach</button>
         </div>
       </div>
-    </div>
-  `;
-  modal.style.display = 'flex';
+    `;
+  }
 
-  document.getElementById('closeGlobalModal').addEventListener('click', () => {
-    modal.style.display = 'none';
-  });
+  // Helper to compute completeness percentage
+  function getCompleteness() {
+    let checkedFields = [
+      'name', 'logo', 'website', 'country', 'sector', 'primaryContact', 'email', 'phone', 'monthlyFee', 'startDate', 'renewalDate',
+      'goalsAchieve', 'goalsProblem', 'goalsTop3', 'goalsSuccess', 'goalsChallenges', 'goalsSupport',
+      'mission', 'shortDesc', 'toneOfVoice', 'writingStyle', 'brandColours', 'fonts', 'approvedHashtags', 'socialHandles',
+      'targetReach', 'audienceCommunity', 'audienceDonor', 'locations', 'ageGroups', 'languages', 'audienceUnderstanding', 'audienceAction',
+      'currentFunders', 'grantNames', 'reportingDeadlines', 'requiredDonorOutputs', 'requiredImpactMetrics', 'requiredEvidence'
+    ];
+    let filled = 0;
+    checkedFields.forEach(f => {
+      if (owClient[f] !== undefined && owClient[f] !== null && owClient[f] !== '') {
+        filled++;
+      }
+    });
+    return Math.round((filled / checkedFields.length) * 100);
+  }
 
-  document.getElementById('newClientForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const name = document.getElementById('ncName').value;
-    const logo = document.getElementById('ncLogo').value;
-    const contact = document.getElementById('ncContact').value;
-    const email = document.getElementById('ncEmail').value;
-    const phone = document.getElementById('ncPhone').value;
-    const website = document.getElementById('ncWebsite').value;
-    const sector = document.getElementById('ncSector').value;
-    const country = document.getElementById('ncCountry').value;
-    const funding = document.getElementById('ncFunding').value;
-    const fee = parseFloat(document.getElementById('ncFee').value);
-    const notes = document.getElementById('ncNotes').value;
+  function getMissingFields() {
+    let missing = [];
+    if (!owClient.name) missing.push('Organisation Name');
+    if (!owClient.logo) missing.push('Logo Emoji');
+    if (!owClient.primaryContact) missing.push('Primary Contact');
+    if (!owClient.email) missing.push('Contact Email');
+    if (!owClient.phone) missing.push('Contact Phone');
+    if (!owClient.website) missing.push('Website URL');
+    if (!owClient.sector) missing.push('Sector Focus');
+    if (!owClient.country) missing.push('Country Base');
+    if (!owClient.goalsAchieve) missing.push('What Client Wants to Achieve');
+    if (!owClient.goalsTop3) missing.push('Top 3 Communication Goals');
+    if (!owClient.mission) missing.push('Mission Statement');
+    if (!owClient.targetReach) missing.push('Main Target Audience');
+    if (!owClient.currentFunders) missing.push('Current Funders');
+    return missing;
+  }
 
-    const id = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  function loadDemoData() {
+    owIsDemoDataLoaded = true;
+    owClient.name = 'Clean Air Africa (Demo)';
+    owClient.logo = '💨';
+    owClient.website = 'www.cleanairafrica.org';
+    owClient.country = 'Kenya';
+    owClient.sector = 'Air Quality Advocacy';
+    owClient.primaryContact = 'Dr. John Kiprop';
+    owClient.keyContact = 'Dr. John Kiprop';
+    owClient.email = 'kiprop@cleanairafrica.org';
+    owClient.phone = '+254 20 555 0199';
+    owClient.monthlyFee = 3000;
+    owClient.contractValue = 36000;
+    owClient.clientStatus = 'Active';
+    owClient.isDemo = true;
+    
+    owClient.goalsAchieve = 'Reduce soot and PM2.5 levels in Nairobi school zones.';
+    owClient.goalsProblem = 'High diesel emissions near schools causing elevated childhood asthma.';
+    owClient.goalsTop3 = '1. Translate raw sensor logs into stories\n2. Mobilize parent advocacy groups\n3. Influence school zoning policies';
+    owClient.goalsSuccess = 'Establish clean breathing zones around 10 school boundaries.';
+    owClient.goalsChallenges = 'Lack of city air monitors and slow environmental ministry regulations.';
+    owClient.goalsSupport = 'Full agency copywriting, social calendars, and Canva design briefs.';
+    
+    owClient.mission = 'To protect African children\'s right to breathe safe air through local monitoring and advocacy.';
+    owClient.shortDesc = 'Clean Air Africa is a Nairobi-based non-profit campaigning for school particulate sensor networks.';
+    owClient.toneOfVoice = 'Urgent, Science-backed, Compassionate';
+    owClient.writingStyle = 'Clear, youth-centric, action-oriented';
+    owClient.wordsToUse = 'Particulate counts, PM2.5, child health, breathing zone';
+    owClient.wordsToAvoid = 'Radical disruption, industry blockade';
+    owClient.brandColours = '#0284c7, #10b981';
+    owClient.fonts = 'Outfit, Roboto';
+    owClient.approvedHashtags = '#CleanAirAfrica, #BreatheSafeNairobi';
+    owClient.socialHandles = '@cleanairafrica';
+    owClient.canvaTemplates = 'https://canva.com/design/CAA_Briefs';
+    
+    owClient.targetReach = 'Nairobi parents, environment board officers, county health directors';
+    owClient.audienceCommunity = 'Mothers and children in heavy transit corridors';
+    owClient.audienceDonor = 'Green climate funds and clean air coalitions';
+    owClient.locations = 'Nairobi County, Kenya';
+    owClient.ageGroups = 'Parents 25-50, school environment clubs';
+    owClient.languages = 'English, Swahili';
+    owClient.audienceUnderstanding = 'Nairobi soot levels exceed global safety thresholds during morning pick-up hours.';
+    owClient.audienceAction = 'Sign the petition to restrict heavy truck transit near schools.';
+    
+    owClient.currentFunders = 'Clean Air Initiative, UNEP Partners';
+    owClient.grantNames = 'Nairobi Breathing Zone Catalyst Award';
+    owClient.reportingDeadlines = 'Bi-annual progress review due November 1st';
+    owClient.requiredDonorOutputs = 'Monthly raw data logs, 1 case study, biannual PDF report';
+    owClient.requiredImpactMetrics = 'Sensors deployed, classrooms checked, parent signatures logged';
+    owClient.requiredEvidence = 'Installation photo, signed parent petition log sheets';
+    owClient.reportFrequency = 'Quarterly';
 
-    state.clients.push({
-      id,
-      name,
-      logo,
-      status: 'green',
-      statusText: 'Healthy',
-      sector,
-      primaryContact: contact,
-      email,
-      phone,
-      website,
-      country,
-      fundingPartners: funding,
-      activeProjectsCount: 1,
-      reportsDueCount: 0,
-      monthlyFee: fee,
-      contractValue: fee * 12,
-      startDate: new Date().toISOString().split('T')[0],
-      renewalDate: new Date(Date.now() + 31536000000).toISOString().split('T')[0],
-      lastActivity: 'Just added',
-      nextDeadline: 'None',
-      notes,
-      healthScore: 100,
-      complianceScore: 100,
-      projectCompletionScore: 100
+    // Social Media Baseline demo metrics
+    owClient.fbPageUrl = 'https://facebook.com/cleanairafrica';
+    owClient.fbFollowers = 4200;
+    owClient.fbAvgReach = 178700;
+    owClient.fbAvgEngagement = 4.2;
+    owClient.igHandle = '@cleanairafrica';
+    owClient.igFollowers = 2100;
+    owClient.igAvgReach = 319200;
+    owClient.igAvgEngagement = 5.4;
+    owClient.baselineTopPosts = '1. Nairobi Rush Hour Dust Levels Post (15.4K reach)\n2. School Sensor Deployment at Kibera (12.2K reach)\n3. Funder announcement (8.4K reach)';
+    owClient.baselineDemographics = 'Nairobi County residents, 65% female, 35% male; 18-35 age group 60%, 35-55 age group 40%';
+    owClient.baselineStartDate = '2026-06-23';
+
+    // Seed campaign
+    owCampaigns = [
+      {
+        id: 'cmp_caa_1',
+        name: 'Nairobi School Breathing Zones',
+        goal: 'Deploy 10 PM2.5 air sensors in schoolyards',
+        description: 'Provide real-time data readouts to parents and lobby for zoning laws.',
+        startDate: '2026-07-01',
+        endDate: '2026-12-31',
+        priority: 'High',
+        targetPlatforms: 'Facebook, WhatsApp',
+        monthlyContentTarget: '8 updates per month',
+        mainMessage: 'Every child has a right to breathe clean air in school.',
+        callToAction: 'Lobby for local school diesel buffer zones.',
+        projectLead: 'Dr. John Kiprop',
+        relatedFunder: 'Clean Air Initiative'
+      }
+    ];
+
+    // Seed evidence transcript for Step 8 Meeting Agent
+    owMeetingText = `Dr. Kiprop: "We are officially launching the Nairobi School Breathing Zones project on July 1st. Our goal is to set up 10 air sensors in Durban and Nairobi schools. We need to raise parent awareness on Facebook and WhatsApp. The Clean Air Initiative is funding this, and we need bi-annual report summaries sent to them. The Department of Health is our target government body. We must educate parents about rush hour soot hazards."`;
+
+    owEvidence = [
+      {
+        id: 'ev_caa_notes',
+        name: 'nairobi_onboarding_alignment_transcript.txt',
+        client_id: 'cleanairafrica-demo',
+        contentType: 'Meeting transcript',
+        dateUploaded: new Date().toISOString().split('T')[0],
+        sourceType: 'Text',
+        verificationStatus: 'Verified',
+        textExcerpt: owMeetingText,
+        isDemoData: true,
+        onboarding_step: 'Evidence & Notes',
+        source_type: 'Text',
+        verification_status: 'Verified',
+        uploaded_at: new Date().toISOString()
+      }
+    ];
+  }
+
+  function renderOnboardingStep() {
+    let sidebarHtml = `
+      <div style="margin-bottom:1.5rem;">
+        <h3 style="color:white; font-size:0.95rem; font-weight:700; margin:0;">Create Workspace</h3>
+        <span style="font-size:0.65rem; color:#94a3b8; text-transform:uppercase; font-weight:600; letter-spacing:0.5px;">NGO Onboarding Wizard</span>
+      </div>
+      <ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.4rem; flex-grow:1;">
+        ${[
+          'Basic Details',
+          'Client Goals',
+          'Brand & Voice',
+          'Campaigns & Projects',
+          'Target Audience',
+          'Funders & Reporting',
+          'Social Media Baseline',
+          'Evidence & Notes',
+          'Meeting Agent Summary',
+          'Final Review & Activate'
+        ].map((lbl, idx) => {
+          const stepNum = idx + 1;
+          const isActive = owStep === stepNum;
+          const isDone = owStep > stepNum;
+          return `
+            <li style="display:flex; align-items:center; gap:0.5rem; font-size:0.75rem; padding:0.4rem 0.5rem; border-radius:6px; background:${isActive ? 'rgba(255,255,255,0.1)' : 'transparent'}; color:${isActive ? 'white' : isDone ? '#4ade80' : '#94a3b8'}; font-weight:${isActive ? '600' : 'normal'};">
+              <span style="width:18px; height:18px; border-radius:50%; border:1px solid ${isActive ? 'white' : isDone ? '#4ade80' : '#475569'}; background:${isDone ? '#4ade80' : 'transparent'}; color:${isDone ? '#0f172a' : 'inherit'}; display:flex; align-items:center; justify-content:center; font-size:0.65rem; font-weight:700; flex-shrink:0;">
+                ${isDone ? '✓' : stepNum}
+              </span>
+              <span style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${lbl}</span>
+            </li>
+          `;
+        }).join('')}
+      </ul>
+      <div style="border-top:1px solid #1e293b; padding-top:1rem; font-size:0.75rem; color:#94a3b8; display:flex; flex-direction:column; gap:0.25rem;">
+        <span>Brief Completion: <strong style="color:white;">${getCompleteness()}%</strong></span>
+        <div style="background:#334155; height:5px; border-radius:3px; overflow:hidden;">
+          <div style="background:#10b981; height:100%; width:${getCompleteness()}%;"></div>
+        </div>
+      </div>
+    `;
+
+    let bodyHtml = '';
+    let stepTitle = '';
+    let stepDesc = '';
+
+    if (owStep === 1) {
+      stepTitle = 'STEP 1: Basic Client Details';
+      stepDesc = 'Onboard the core institutional information and contact variables.';
+      bodyHtml = `
+        <div class="modal-form-fields-grid">
+          <div class="form-group">
+            <label>Organisation Name</label>
+            <input type="text" id="owName" value="${owClient.name}" placeholder="e.g. Clean Air Africa" />
+          </div>
+          <div class="form-group">
+            <label>Workspace Logo (Emoji)</label>
+            <input type="text" id="owLogo" value="${owClient.logo}" placeholder="e.g. 💨" />
+          </div>
+          <div class="form-group">
+            <label>Website URL</label>
+            <input type="text" id="owWebsite" value="${owClient.website}" placeholder="e.g. www.cleanair.org" />
+          </div>
+          <div class="form-group">
+            <label>Country Base</label>
+            <input type="text" id="owCountry" value="${owClient.country}" placeholder="e.g. Kenya" />
+          </div>
+          <div class="form-group">
+            <label>Sector Focus</label>
+            <input type="text" id="owSector" value="${owClient.sector}" placeholder="e.g. Air Quality" />
+          </div>
+          <div class="form-group">
+            <label>Primary Contact Name</label>
+            <input type="text" id="owContact" value="${owClient.primaryContact}" placeholder="e.g. Dr. John Kiprop" />
+          </div>
+          <div class="form-group">
+            <label>Contact Email</label>
+            <input type="email" id="owEmail" value="${owClient.email}" placeholder="e.g. contact@cleanair.org" />
+          </div>
+          <div class="form-group">
+            <label>Contact Phone Number</label>
+            <input type="text" id="owPhone" value="${owClient.phone}" placeholder="e.g. +254 20 555" />
+          </div>
+          <div class="form-group">
+            <label>Monthly Fee (£)</label>
+            <input type="number" id="owFee" value="${owClient.monthlyFee}" placeholder="e.g. 2500" />
+          </div>
+          <div class="form-group">
+            <label>Contract Status</label>
+            <select id="owStatus">
+              <option value="Lead" ${owClient.clientStatus === 'Lead' ? 'selected' : ''}>Lead Onboarding</option>
+              <option value="Active" ${owClient.clientStatus === 'Active' ? 'selected' : ''}>Active Client</option>
+              <option value="Paused" ${owClient.clientStatus === 'Paused' ? 'selected' : ''}>Paused Contract</option>
+              <option value="Completed" ${owClient.clientStatus === 'Completed' ? 'selected' : ''}>Completed Client</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Contract Start Date</label>
+            <input type="date" id="owStart" value="${owClient.startDate}" />
+          </div>
+          <div class="form-group">
+            <label>Contract End Date</label>
+            <input type="date" id="owEnd" value="${owClient.renewalDate}" />
+          </div>
+        </div>
+        ${renderStepAttachmentsSection('Basic Details', 1)}
+      `;
+    } else if (owStep === 2) {
+      stepTitle = 'STEP 2: Client Goals';
+      stepDesc = 'Identify core goals, expectations, and challenges.';
+      bodyHtml = `
+        <div class="modal-form-fields">
+          <div class="form-group">
+            <label>What does the client want to achieve?</label>
+            <textarea id="owGoalAchieve" placeholder="e.g. Scale school monitoring campaigns...">${owClient.goalsAchieve}</textarea>
+          </div>
+          <div class="form-group">
+            <label>What problem are they trying to solve?</label>
+            <textarea id="owGoalProblem" placeholder="e.g. Health impacts from high soot emissions...">${owClient.goalsProblem}</textarea>
+          </div>
+          <div class="form-group">
+            <label>What are their top 3 communication goals?</label>
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.25rem; flex-wrap:wrap;">
+              <button type="button" class="btn btn-xs btn-outline goal-pill" data-txt="Grow public awareness">• Grow public awareness</button>
+              <button type="button" class="btn btn-xs btn-outline goal-pill" data-txt="Improve donor reporting">• Improve donor reporting</button>
+              <button type="button" class="btn btn-xs btn-outline goal-pill" data-txt="Turn reports into stories">• Turn reports into stories</button>
+              <button type="button" class="btn btn-xs btn-outline goal-pill" data-txt="Communicate impact to funders">• Communicate impact to funders</button>
+            </div>
+            <textarea id="owGoalTop3" placeholder="List top 3 goals...">${owClient.goalsTop3}</textarea>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>What does success look like?</label>
+              <input type="text" id="owGoalSuccess" value="${owClient.goalsSuccess}" placeholder="Success metric..." />
+            </div>
+            <div class="form-group">
+              <label>Biggest challenges?</label>
+              <input type="text" id="owGoalChallenges" value="${owClient.goalsChallenges}" placeholder="e.g. Customs delays, regulations..." />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>What support do they expect from IK Comms?</label>
+            <input type="text" id="owGoalSupport" value="${owClient.goalsSupport}" placeholder="e.g. Social management, Canva briefs..." />
+          </div>
+        </div>
+      `;
+    } else if (owStep === 3) {
+      stepTitle = 'STEP 3: Brand & Voice';
+      stepDesc = 'Align on copywriting parameters, brand colors, and guidelines.';
+      bodyHtml = `
+        <div class="modal-form-fields">
+          <div class="form-group">
+            <label>Mission Statement</label>
+            <input type="text" id="owMission" value="${owClient.mission}" placeholder="Core mission statement..." />
+          </div>
+          <div class="form-group">
+            <label>Short Organisation Description</label>
+            <textarea id="owShortDesc" placeholder="Brief description used in headers...">${owClient.shortDesc}</textarea>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Tone of Voice</label>
+              <input type="text" id="owTone" value="${owClient.toneOfVoice}" placeholder="e.g. Urgent, Science-backed" />
+            </div>
+            <div class="form-group">
+              <label>Writing Style</label>
+              <input type="text" id="owStyle" value="${owClient.writingStyle}" placeholder="e.g. Clear, youth-centric" />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Words to Use</label>
+              <input type="text" id="owWordsUse" value="${owClient.wordsToUse}" placeholder="Comma separated..." />
+            </div>
+            <div class="form-group">
+              <label>Words to Avoid</label>
+              <input type="text" id="owWordsAvoid" value="${owClient.wordsToAvoid}" placeholder="Avoid words..." />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Brand Colours (Hex)</label>
+              <input type="text" id="owColours" value="${owClient.brandColours}" placeholder="e.g. #0284c7, #10b981" />
+            </div>
+            <div class="form-group">
+              <label>Fonts</label>
+              <input type="text" id="owFonts" value="${owClient.fonts}" placeholder="e.g. Outfit, Roboto" />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Approved Hashtags</label>
+              <input type="text" id="owHashtags" value="${owClient.approvedHashtags}" placeholder="#CleanAir, #Eco" />
+            </div>
+            <div class="form-group">
+              <label>Social Handles</label>
+              <input type="text" id="owHandles" value="${owClient.socialHandles}" placeholder="@handle" />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Canva Templates Link</label>
+              <input type="text" id="owCanva" value="${owClient.canvaTemplates}" placeholder="http://canva.com/..." />
+            </div>
+            <div class="form-group">
+              <label>Example Posts Upload / Description</label>
+              <input type="text" id="owPoster" value="${owClient.posterExamples}" placeholder="Folder links or file names..." />
+            </div>
+          </div>
+        </div>
+        ${renderStepAttachmentsSection('Brand & Voice', 3)}
+      `;
+    } else if (owStep === 4) {
+      stepTitle = 'STEP 4: Campaigns & Projects';
+      stepDesc = 'Register campaigns. Link multiple projects directly to the client profile.';
+      
+      let campaignsListHtml = owCampaigns.length === 0
+        ? `<p style="font-size:0.8rem; color:#64748b; font-style:italic; text-align:center; padding:1rem; border:1px dashed #cbd5e1; border-radius:6px;">No campaigns added yet. Add a campaign using the form below.</p>`
+        : `<div style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1rem;">
+            ${owCampaigns.map((c, i) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:0.6rem 0.8rem; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem;">
+                <div>
+                  <strong>${c.name}</strong>
+                  <span style="color:#64748b; font-size:0.75rem;"> - Goal: ${c.goal} (${c.priority})</span>
+                </div>
+                <button type="button" class="btn btn-xs btn-outline ow-del-campaign" data-idx="${i}" style="color:var(--danger-color); border-color:#fca5a5;">Delete</button>
+              </div>
+            `).join('')}
+           </div>`;
+
+      bodyHtml = `
+        <div class="modal-form-fields">
+          <div class="campaign-list-section">
+            <h4 style="margin-top:0; font-size:0.85rem; font-weight:600; color:#0f172a; margin-bottom:0.5rem;">Registered Campaigns</h4>
+            ${campaignsListHtml}
+          </div>
+
+          <div style="background:#f1f5f9; padding:1rem; border-radius:8px; border:1px solid #e2e8f0; display:flex; flex-direction:column; gap:0.75rem;">
+            <h4 style="margin:0 0 0.5rem 0; font-size:0.8rem; font-weight:700; color:#475569; border-bottom:1px solid #cbd5e1; padding-bottom:0.25rem;">Add New Campaign Workspace</h4>
+            
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+              <div class="form-group">
+                <label>Campaign Name</label>
+                <input type="text" id="cName" placeholder="e.g. Nairobi School Zones" />
+              </div>
+              <div class="form-group">
+                <label>Campaign Goal</label>
+                <input type="text" id="cGoal" placeholder="e.g. Deploy 10 monitors" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Campaign Description</label>
+              <textarea id="cDesc" style="height:60px;" placeholder="Brief description..."></textarea>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem;">
+              <div class="form-group">
+                <label>Priority</label>
+                <select id="cPriority">
+                  <option value="High">High Priority</option>
+                  <option value="Medium">Medium Priority</option>
+                  <option value="Low">Low Priority</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" id="cStart" value="${new Date().toISOString().split('T')[0]}" />
+              </div>
+              <div class="form-group">
+                <label>End Date</label>
+                <input type="date" id="cEnd" value="${new Date(Date.now() + 15552000000).toISOString().split('T')[0]}" />
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+              <div class="form-group">
+                <label>Target Platforms</label>
+                <input type="text" id="cPlatforms" placeholder="Facebook, WhatsApp..." />
+              </div>
+              <div class="form-group">
+                <label>Content Target (monthly)</label>
+                <input type="text" id="cTarget" placeholder="e.g. 8 updates/mo" />
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+              <div class="form-group">
+                <label>Main Campaign Message</label>
+                <input type="text" id="cMessage" placeholder="Every child has a right to breathe..." />
+              </div>
+              <div class="form-group">
+                <label>Call to Action (CTA)</label>
+                <input type="text" id="cCta" placeholder="Lobby for buffer zones..." />
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+              <div class="form-group">
+                <label>Project Lead</label>
+                <input type="text" id="cLead" placeholder="Staff lead..." />
+              </div>
+              <div class="form-group">
+                <label>Related Funder</label>
+                <input type="text" id="cFunder" placeholder="Funder name..." />
+              </div>
+            </div>
+
+            <button type="button" class="btn btn-outline" id="owAddCampaignBtn" style="border-color:#4f46e5; color:#4f46e5; margin-top:0.5rem;">+ Add Campaign to Workspace</button>
+          </div>
+        </div>
+        ${renderStepAttachmentsSection('Campaigns & Projects', 4)}
+      `;
+    } else if (owStep === 5) {
+      stepTitle = 'STEP 5: Target Audience';
+      stepDesc = 'Identify beneficiary groups, geographies, and cultural contexts.';
+      bodyHtml = `
+        <div class="modal-form-fields">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Main Target Audience</label>
+              <input type="text" id="owAudienceMain" value="${owClient.targetReach}" placeholder="Who is key to reach..." />
+            </div>
+            <div class="form-group">
+              <label>Community Audience</label>
+              <input type="text" id="owAudienceComm" value="${owClient.audienceCommunity}" placeholder="Fence-line communities..." />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Donor Audience</label>
+              <input type="text" id="owAudienceDonor" value="${owClient.audienceDonor}" placeholder="Clean air foundations..." />
+            </div>
+            <div class="form-group">
+              <label>Government/Policy Audience</label>
+              <input type="text" id="owAudienceGov" value="${owClient.audienceGovernment}" placeholder="Health ministries..." />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Youth Audience</label>
+              <input type="text" id="owAudienceYouth" value="${owClient.audienceYouth}" placeholder="School environment clubs..." />
+            </div>
+            <div class="form-group">
+              <label>Media Audience</label>
+              <input type="text" id="owAudienceMedia" value="${owClient.audienceMedia}" placeholder="Environmental reporters..." />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Geographic Locations</label>
+              <input type="text" id="owLocations" value="${owClient.locations}" placeholder="e.g. Nairobi, Kenya" />
+            </div>
+            <div class="form-group">
+              <label>Age Groups</label>
+              <input type="text" id="owAgeGroups" value="${owClient.ageGroups}" placeholder="e.g. Parents 25-50" />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Languages Required</label>
+              <input type="text" id="owLanguages" value="${owClient.languages}" placeholder="Swahili, English..." />
+            </div>
+            <div class="form-group">
+              <label>Cultural Considerations</label>
+              <input type="text" id="owCultural" value="${owClient.culturalConsiderations}" placeholder="e.g. Translation dialects, community leaders..." />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>What must audience understand?</label>
+              <input type="text" id="owAudienceUnder" value="${owClient.audienceUnderstanding}" placeholder="Key message hazard..." />
+            </div>
+            <div class="form-group">
+              <label>What action should they take?</label>
+              <input type="text" id="owAudienceAct" value="${owClient.audienceAction}" placeholder="Sign petition, join club..." />
+            </div>
+          </div>
+        </div>
+        ${renderStepAttachmentsSection('Target Audience', 5)}
+      `;
+    } else if (owStep === 6) {
+      stepTitle = 'STEP 6: Funders & Reporting Needs';
+      stepDesc = 'Identify grant requirements, compliance check cadences, and metrics.';
+      bodyHtml = `
+        <div class="modal-form-fields">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Current Funders</label>
+              <input type="text" id="owFunders" value="${owClient.currentFunders}" placeholder="UNEP, Sida..." />
+            </div>
+            <div class="form-group">
+              <label>Grant Names</label>
+              <input type="text" id="owGrants" value="${owClient.grantNames}" placeholder="Breathing Zone Grant..." />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Reporting Deadlines</label>
+              <input type="text" id="owDeadlines" value="${owClient.reportingDeadlines}" placeholder="Quarterly by 15th..." />
+            </div>
+            <div class="form-group">
+              <label>Required Donor Outputs</label>
+              <input type="text" id="owOutputs" value="${owClient.requiredDonorOutputs}" placeholder="CSV logs, monthly brief..." />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Donor Logo Rules</label>
+              <input type="text" id="owLogoRules" value="${owClient.donorLogoRequirements}" placeholder="Consultancy logo secondary..." />
+            </div>
+            <div class="form-group">
+              <label>Funder Communication Rules</label>
+              <input type="text" id="owCommRules" value="${owClient.funderCommunicationRules}" placeholder="No political lobbying tags..." />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="form-group">
+              <label>Required Impact Metrics</label>
+              <input type="text" id="owImpactMetrics" value="${owClient.requiredImpactMetrics}" placeholder="Sensors, teachers trained..." />
+            </div>
+            <div class="form-group">
+              <label>Evidence Required by Funders</label>
+              <input type="text" id="owEvidenceReq" value="${owClient.requiredEvidence}" placeholder="Installation photos, sign registers..." />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Report Frequency</label>
+            <select id="owFrequency">
+              <option value="Monthly" ${owClient.reportFrequency === 'Monthly' ? 'selected' : ''}>Monthly Report</option>
+              <option value="Quarterly" ${owClient.reportFrequency === 'Quarterly' ? 'selected' : ''}>Quarterly Report</option>
+              <option value="Annual" ${owClient.reportFrequency === 'Annual' ? 'selected' : ''}>Annual Report</option>
+              <option value="Ad hoc" ${owClient.reportFrequency === 'Ad hoc' ? 'selected' : ''}>Ad hoc Report</option>
+            </select>
+          </div>
+        </div>
+        ${renderStepAttachmentsSection('Funders & Reporting', 6)}
+      `;
+    } else if (owStep === 7) {
+      stepTitle = 'STEP 7: Social Media Starting Baseline';
+      stepDesc = 'Record starting followers, reach, and engagement to measure growth.';
+      bodyHtml = `
+        <div class="modal-form-fields">
+          <div style="background:#e0f2fe; border:1px solid #bae6fd; padding:0.75rem; border-radius:8px; color:#0369a1; font-size:0.8rem; font-weight:600; display:flex; gap:0.4rem; align-items:center; margin-bottom:1rem;">
+            <span>📊</span>
+            <span>Capture starting growth metrics to calculate future 3-month, 6-month and annual performance reports.</span>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+            <!-- Facebook Column -->
+            <div style="background:white; border:1px solid #cbd5e1; border-radius:8px; padding:0.75rem; display:flex; flex-direction:column; gap:0.5rem;">
+              <h4 style="margin:0 0 0.25rem 0; font-size:0.8rem; font-weight:700; color:#1877f2; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem; text-transform:none;">📘 Facebook Baseline</h4>
+              <div class="form-group">
+                <label>Page URL</label>
+                <input type="text" id="owFbPageUrl" value="${owClient.fbPageUrl || ''}" placeholder="facebook.com/..." />
+              </div>
+              <div class="form-group">
+                <label>Followers</label>
+                <input type="number" id="owFbFollowers" value="${owClient.fbFollowers || 0}" />
+              </div>
+              <div class="form-group">
+                <label>Avg Monthly Reach</label>
+                <input type="number" id="owFbAvgReach" value="${owClient.fbAvgReach || 0}" />
+              </div>
+              <div class="form-group">
+                <label>Avg Engagement Rate (%)</label>
+                <input type="number" step="0.1" id="owFbAvgEngagement" value="${owClient.fbAvgEngagement || 0.0}" />
+              </div>
+            </div>
+
+            <!-- Instagram Column -->
+            <div style="background:white; border:1px solid #cbd5e1; border-radius:8px; padding:0.75rem; display:flex; flex-direction:column; gap:0.5rem;">
+              <h4 style="margin:0 0 0.25rem 0; font-size:0.8rem; font-weight:700; color:#c13584; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem; text-transform:none;">📸 Instagram Baseline</h4>
+              <div class="form-group">
+                <label>Handle</label>
+                <input type="text" id="owIgHandle" value="${owClient.igHandle || ''}" placeholder="@..." />
+              </div>
+              <div class="form-group">
+                <label>Followers</label>
+                <input type="number" id="owIgFollowers" value="${owClient.igFollowers || 0}" />
+              </div>
+              <div class="form-group">
+                <label>Avg Monthly Reach</label>
+                <input type="number" id="owIgAvgReach" value="${owClient.igAvgReach || 0}" />
+              </div>
+              <div class="form-group">
+                <label>Avg Engagement Rate (%)</label>
+                <input type="number" step="0.1" id="owIgAvgEngagement" value="${owClient.igAvgEngagement || 0.0}" />
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:1rem;">
+            <div>
+              <div class="form-group">
+                <label>Top Social Media Posts (Description & Performance)</label>
+                <textarea id="owBaselineTopPosts" style="height:60px;" placeholder="e.g. 1. Post Name (12K reach)...">${owClient.baselineTopPosts || ''}</textarea>
+              </div>
+              <div class="form-group">
+                <label>Audience Demographics</label>
+                <textarea id="owBaselineDemographics" style="height:50px;" placeholder="e.g. 60% female, Durban based...">${owClient.baselineDemographics || ''}</textarea>
+              </div>
+            </div>
+            
+            <div style="background:white; border:1px solid #cbd5e1; border-radius:8px; padding:0.75rem; display:flex; flex-direction:column; gap:0.5rem; justify-content:center;">
+              <div class="form-group" style="margin:0;">
+                <label>Baseline Start Date</label>
+                <input type="date" id="owBaselineStartDate" value="${owClient.baselineStartDate || ''}" />
+              </div>
+              <p style="font-size:0.65rem; color:#64748b; line-height:1.4; margin:0;">
+                These values represent the starting benchmark. All future report cards will be compared against these figures.
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (owStep === 8) {
+      stepTitle = 'STEP 8: Evidence & First Meeting Notes';
+      stepDesc = 'Connect files, attendance logs, registers, or alignment transcripts.';
+      
+      let evidenceListHtml = owEvidence.length === 0
+        ? `<p style="font-size:0.8rem; color:#64748b; font-style:italic; text-align:center; padding:1rem; border:1px dashed #cbd5e1; border-radius:6px;">No files connected yet. Simulate a file upload below.</p>`
+        : `<div style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1rem;">
+            ${owEvidence.map((e, i) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:0.6rem 0.8rem; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem;">
+                <div>
+                  <strong>${getFileIcon(e.sourceType)} ${e.name}</strong>
+                  <span style="color:#64748b; font-size:0.75rem;"> (${e.sourceType} • Step: ${e.onboarding_step || 'General Evidence'} • Campaign: ${e.campaign || 'General'} • ${e.verificationStatus})</span>
+                </div>
+                <button type="button" class="btn btn-xs btn-outline ow-del-evidence" data-idx="${i}" style="color:var(--danger-color); border-color:#fca5a5;">Remove</button>
+              </div>
+            `).join('')}
+           </div>`;
+
+      bodyHtml = `
+        <div class="modal-form-fields">
+          <div style="background:#e0f2fe; border:1px solid #bae6fd; padding:0.75rem; border-radius:8px; color:#0369a1; font-size:0.8rem; font-weight:600; display:flex; gap:0.4rem; align-items:center;">
+            <span>💡</span>
+            <span>[PROTOTYPE ONLY] File uploads are simulated here. Upload transcript files or notes to run the Meeting Agent in Step 9.</span>
+          </div>
+
+          <div class="evidence-list-section">
+            <h4 style="margin-top:0; font-size:0.85rem; font-weight:600; color:#0f172a; margin-bottom:0.5rem;">Connected Evidence & Notes</h4>
+            ${evidenceListHtml}
+          </div>
+
+          <div style="background:#f8fafc; padding:1rem; border-radius:8px; border:1px solid #e2e8f0; display:flex; flex-direction:column; gap:0.75rem;">
+            <h4 style="margin:0 0 0.5rem 0; font-size:0.8rem; font-weight:700; color:#475569; border-bottom:1px solid #cbd5e1; padding-bottom:0.25rem;">Simulate File Upload & Tagging</h4>
+            
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+              <div class="form-group">
+                <label>Select File</label>
+                <input type="file" id="eFile" style="font-size:0.75rem; padding:0.25rem 0.4rem; border-radius:4px; height:28px;" />
+              </div>
+              <div class="form-group">
+                <label>Source Type / Category</label>
+                <select id="eType">
+                  <option value="PDF">PDF Reports</option>
+                  <option value="Word">Word Document</option>
+                  <option value="Text">Meeting Transcript / Notes</option>
+                  <option value="Excel">Survey Results / Attendance Register</option>
+                  <option value="Image">Project Photo</option>
+                  <option value="Video">Meeting Recording</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+              <div class="form-group">
+                <label>Assign to Campaign</label>
+                <select id="eCampaign">
+                  <option value="General">General Workspace (No specific campaign)</option>
+                  ${owCampaigns.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Verification Status</label>
+                <select id="eVerification">
+                  <option value="Verified">Verified</option>
+                  <option value="Needs Review">Needs Review</option>
+                  <option value="Unverified">Unverified</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>File Excerpt / Text Content</label>
+              <textarea id="eExcerpt" style="height:60px;" placeholder="Paste text summary or transcript details here..."></textarea>
+            </div>
+
+            <button type="button" class="btn btn-outline" id="owAddEvidenceBtn" style="border-color:#4f46e5; color:#4f46e5; margin-top:0.5rem;">+ Ingest File to Evidence List</button>
+          </div>
+        </div>
+      `;
+    } else if (owStep === 9) {
+      stepTitle = 'STEP 9: Meeting Agent Summary';
+      stepDesc = 'The Meeting Intelligence Agent extracts alignment objectives, target metrics, and tasks.';
+      
+      // Auto-detect transcript files from Step 8 (Evidence & Notes)
+      const transcripts = owEvidence.filter(e => e.sourceType === 'Text' || e.name.toLowerCase().includes('transcript') || e.contentType === 'Meeting transcript');
+      let transcriptInfoHtml = '';
+      if (transcripts.length > 0) {
+        if (!owMeetingText.trim()) {
+          owMeetingText = transcripts.map(t => t.textExcerpt || '').join('\n\n');
+        }
+        transcriptInfoHtml = `
+          <div style="background:#ecfdf5; border:1px solid #a7f3d0; padding:0.75rem; border-radius:8px; color:#065f46; font-size:0.8rem; font-weight:600; display:flex; gap:0.4rem; align-items:center; margin-bottom:0.75rem;">
+            <span>✔️</span>
+            <span>Auto-detected transcript file(s) attached in Evidence: <strong>${transcripts.map(t => t.name).join(', ')}</strong>. The agent will run on this data.</span>
+          </div>
+        `;
+      } else {
+        transcriptInfoHtml = `
+          <div style="background:#fffbeb; border:1px solid #fde68a; padding:0.75rem; border-radius:8px; color:#b45309; font-size:0.8rem; font-weight:600; display:flex; gap:0.4rem; align-items:center; margin-bottom:0.75rem;">
+            <span>⚠️</span>
+            <span>No transcripts were attached in Evidence & Notes. Please paste the meeting transcript manually below to run the agent.</span>
+          </div>
+        `;
+      }
+
+      let analysisResultHtml = '';
+      if (owLoadingAnalysis) {
+        analysisResultHtml = `
+          <div style="text-align:center; padding:2rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; display:flex; flex-direction:column; gap:0.75rem; align-items:center;">
+            <div style="border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;"></div>
+            <strong style="font-size:0.9rem; color:#4f46e5;">🤖 Meeting Intelligence Agent is analyzing transcripts...</strong>
+            <span style="font-size:0.75rem; color:#64748b;">Processing project alignment facts, goals, and funding constraints...</span>
+            <style>
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+            </style>
+          </div>
+        `;
+      } else if (owMeetingSummary) {
+        analysisResultHtml = `
+          <div style="background:#ecfdf5; border:1px solid #a7f3d0; padding:1.25rem; border-radius:8px; display:flex; flex-direction:column; gap:1rem; font-size:0.8rem; color:#065f46; max-height:400px; overflow-y:auto; line-height:1.4;">
+            <div style="display:flex; justify-content:space-between; border-bottom:1px solid #a7f3d0; padding-bottom:0.5rem; margin-bottom:0.25rem;">
+              <strong style="font-size:0.9rem;">🤖 Meeting Intelligence Agent Output</strong>
+              <span class="badge success" style="background:#10b981; color:white; font-size:0.65rem;">Active & Listening</span>
+            </div>
+            
+            <div>
+              <strong style="display:block; font-weight:700; color:#047857; margin-bottom:0.15rem;">📝 Meeting Summary:</strong>
+              <span>${owMeetingSummary.summary}</span>
+            </div>
+
+            <div>
+              <strong style="display:block; font-weight:700; color:#047857; margin-bottom:0.15rem;">🎯 Client Goals Detected:</strong>
+              <span style="white-space:pre-wrap;">${owMeetingSummary.goalsDetected}</span>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+              <div>
+                <strong style="display:block; font-weight:700; color:#047857; margin-bottom:0.15rem;">🤝 Key Decisions:</strong>
+                <span style="white-space:pre-wrap;">${owMeetingSummary.decisions}</span>
+              </div>
+              <div>
+                <strong style="display:block; font-weight:700; color:#047857; margin-bottom:0.15rem;">⚡ Action Points:</strong>
+                <span style="white-space:pre-wrap;">${owMeetingSummary.actionPoints}</span>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+              <div>
+                <strong style="display:block; font-weight:700; color:#047857; margin-bottom:0.15rem;">📈 Required Outputs:</strong>
+                <span>${owMeetingSummary.outputs}</span>
+              </div>
+              <div>
+                <strong style="display:block; font-weight:700; color:#047857; margin-bottom:0.15rem;">Recommended next steps:</strong>
+                <span>${owMeetingSummary.nextSteps}</span>
+              </div>
+            </div>
+
+            <div>
+              <strong style="display:block; font-weight:700; color:#047857; margin-bottom:0.15rem;">🤖 Which AI agents need this information:</strong>
+              <span>${owMeetingSummary.agentTargets}</span>
+            </div>
+
+            <div style="background:white; border:1px solid #a7f3d0; padding:0.75rem; border-radius:6px; margin-top:0.5rem; display:flex; align-items:center; gap:0.5rem; color:#0f172a;">
+              <input type="checkbox" id="owApproveSummaryCheck" ${owMeetingSummaryApproved ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;" />
+              <label for="owApproveSummaryCheck" style="font-weight:600; font-size:0.75rem; cursor:pointer; color:#0f172a;">I approve this Meeting Agent summary and the extracted client goals.</label>
+            </div>
+          </div>
+        `;
+      } else {
+        analysisResultHtml = `
+          <div style="text-align:center; padding:1.5rem; background:white; border:1px solid #cbd5e1; border-radius:8px; color:#64748b; font-size:0.8rem;">
+            Awaiting transcript data inputs to execute alignment analysis.
+          </div>
+        `;
+      }
+
+      bodyHtml = `
+        <div class="modal-form-fields">
+          ${transcriptInfoHtml}
+          <div class="form-group">
+            <label>Meeting notes / raw transcript text</label>
+            <textarea id="owMeetingText" style="height:120px;" placeholder="Paste meeting notes, transcript logs, or alignment conversation details here...">${owMeetingText}</textarea>
+          </div>
+          
+          <button type="button" class="btn btn-primary" id="owRunMeetingAgentBtn" style="background:#4f46e5; border-color:#4338ca; font-weight:700; padding:0.6rem 1rem;">🧠 Execute Meeting Intelligence Agent</button>
+
+          <div class="analysis-results-section mt-4">
+            <h4 style="margin-top:0; font-size:0.85rem; font-weight:600; color:#0f172a; margin-bottom:0.5rem;">Agent Analysis Overview</h4>
+            ${analysisResultHtml}
+          </div>
+        </div>
+      `;
+    } else if (owStep === 10) {
+      stepTitle = 'STEP 10: Final Review & Activate Workspace';
+      stepDesc = 'Confirm client brief parameters and select agent workspace activation level.';
+      
+      let missingFields = getMissingFields();
+      let isBriefReady = missingFields.length === 0;
+
+      bodyHtml = `
+        <div class="modal-form-fields">
+          <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:1.25rem;">
+            
+            <!-- Completion Card -->
+            <div style="background:white; border:1px solid #cbd5e1; border-radius:8px; padding:1rem; display:flex; flex-direction:column; gap:0.75rem;">
+              <h4 style="margin:0 0 0.5rem 0; font-size:0.85rem; font-weight:700; color:#0f172a; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem;">Onboarding Status Check</h4>
+              
+              <div style="display:flex; flex-direction:column; gap:0.15rem;">
+                <span style="font-size:0.7rem; text-transform:uppercase; color:#64748b; font-weight:600;">Brief Completion Score</span>
+                <div style="display:flex; align-items:center; gap:0.5rem; font-size:1.15rem; font-weight:700; color:${getCompleteness() >= 80 ? '#059669' : '#d97706'};">
+                  <span>${getCompleteness()}%</span>
+                  <span class="badge ${getCompleteness() >= 80 ? 'success' : 'warning'}" style="font-size:0.6rem; padding:0.1rem 0.3rem;">
+                    ${getCompleteness() >= 80 ? 'Ready' : 'Under Scope'}
+                  </span>
+                </div>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:0.15rem;">
+                <span style="font-size:0.7rem; text-transform:uppercase; color:#64748b; font-weight:600;">Campaigns Configured</span>
+                <span style="font-size:0.85rem; font-weight:600; color:#0f172a;">${owCampaigns.length} Active Campaigns</span>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:0.15rem;">
+                <span style="font-size:0.7rem; text-transform:uppercase; color:#64748b; font-weight:600;">Evidence Ingested</span>
+                <span style="font-size:0.85rem; font-weight:600; color:#0f172a;">${owEvidence.length} Connected files</span>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:0.15rem;">
+                <span style="font-size:0.7rem; text-transform:uppercase; color:#64748b; font-weight:600;">Meeting Alignment Summary</span>
+                <span style="font-size:0.85rem; font-weight:600; color:${owMeetingSummaryApproved ? '#059669' : '#dc2626'};">
+                  ${owMeetingSummaryApproved ? '✔️ Approved & Locked' : '❌ Summary Approval Pending'}
+                </span>
+              </div>
+            </div>
+
+            <!-- Lock Checklist -->
+            <div style="background:white; border:1px solid #cbd5e1; border-radius:8px; padding:1rem; display:flex; flex-direction:column; gap:0.5rem;">
+              <h4 style="margin:0 0 0.5rem 0; font-size:0.85rem; font-weight:700; color:#0f172a; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem;">Activation Safety Policy</h4>
+              
+              <ul style="list-style:none; padding:0; margin:0; font-size:0.75rem; display:flex; flex-direction:column; gap:0.4rem; line-height:1.4;">
+                <li style="display:flex; align-items:center; gap:0.35rem;">
+                  <span>🤖</span>
+                  <span>Meeting Intelligence Agent: <strong style="color:#059669;">ACTIVE</strong> (Runs immediately)</span>
+                </li>
+                <li style="display:flex; align-items:center; gap:0.35rem;">
+                  ${owMeetingSummaryApproved ? '<span style="color:#059669;">✔️</span>' : '<span style="color:#dc2626;">❌</span>'}
+                  <span>User approved onboarding meeting summary: <strong>${owMeetingSummaryApproved ? 'Yes' : 'No'}</strong></span>
+                </li>
+                <li style="display:flex; align-items:center; gap:0.35rem;">
+                  ${isBriefReady ? '<span style="color:#059669;">✔️</span>' : '<span style="color:#d97706;">⚠️</span>'}
+                  <span>Client Brief checklist: <strong>${isBriefReady ? 'All Required Filled' : 'Missing Fields'}</strong></span>
+                </li>
+              </ul>
+
+              ${missingFields.length > 0 ? `
+                <div style="background:#fffbeb; border:1px solid #fde68a; padding:0.5rem; border-radius:6px; font-size:0.7rem; color:#b45309; max-height:100px; overflow-y:auto; margin-top:0.25rem;">
+                  <strong>Missing fields:</strong> ${missingFields.join(', ')}
+                </div>
+              ` : ''}
+            </div>
+
+          </div>
+
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1rem; border-radius:8px; font-size:0.8rem; line-height:1.5; color:#475569; display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem;">
+            <strong>Workspace Activation Actions:</strong>
+            <ul style="list-style:disc; padding-left:1.25rem; margin:0; display:flex; flex-direction:column; gap:0.25rem;">
+              <li><strong>Save Workspace Draft:</strong> Saves onboarding parameters as an unapproved draft. Generative AI agents remain locked.</li>
+              <li><strong>Approve Client Brief:</strong> Approves the onboarding parameters. Meeting agent remains active, but other agents are kept in standby mode.</li>
+              <li><strong>Activate AI Agents:</strong> Unlocks all generative agents (Storytelling, Social Media, Canva Brief, Calendar, Reporting, Analytics) to immediately begin processing workspace content. (Requires Onboarding Meeting Approval).</li>
+            </ul>
+          </div>
+        </div>
+      `;
+    }
+
+    modal.innerHTML = `
+      <div class="modal-dialog modal-lg" style="max-width: 900px; width: 95%;">
+        <div class="modal-content" style="border:none; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); overflow:hidden;">
+          <div class="onboarding-wizard-layout" style="display:flex; height: 80vh; max-height: 700px; border-radius: 12px; overflow: hidden; background: white;">
+            <!-- Left steps tracker -->
+            <aside class="onboarding-steps-sidebar" style="width: 250px; background: #0f172a; color: white; padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; flex-shrink:0;">
+              ${sidebarHtml}
+            </aside>
+
+            <!-- Main content form panel -->
+            <main class="onboarding-wizard-main" style="flex-grow: 1; display: flex; flex-direction: column; background: #f8fafc; height: 100%; overflow:hidden;">
+              <!-- Header -->
+              <div class="onboarding-wizard-header" style="background: white; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h2 style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin:0;" id="owStepTitle">${stepTitle}</h2>
+                  <p style="font-size: 0.75rem; color: #64748b; margin: 0.25rem 0 0 0;" id="owStepDesc">${stepDesc}</p>
+                </div>
+                ${!owIsDemoDataLoaded ? `
+                  <button class="btn btn-sm btn-ghost" id="owLoadDemoDataBtn" style="color: #4f46e5; border: 1px dashed #c7d2fe; background: #f5f3ff; font-weight:700; border-radius:6px; padding:0.3rem 0.6rem;">⚡ Load Demo Data</button>
+                ` : `
+                  <span class="badge success" style="background:#e0f2fe; color:#0369a1; font-size:0.7rem; font-weight:700; padding:0.25rem 0.5rem; border-radius:4px;">💨 Demo Data Loaded</span>
+                `}
+              </div>
+              
+              <!-- Body (scrollable) -->
+              <div class="onboarding-wizard-body" style="flex-grow: 1; padding: 1.5rem; overflow-y: auto;">
+                ${bodyHtml}
+              </div>
+
+              <!-- Footer -->
+              <div class="onboarding-wizard-footer" style="background: white; padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <button class="btn btn-outline" id="owPrevBtn" ${owStep === 1 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>← Back</button>
+                <div style="display:flex; gap: 0.5rem;">
+                  <button class="btn btn-ghost" id="owCloseBtn" style="font-weight:600; padding:0.5rem 1rem;">Cancel</button>
+                  ${owStep < 10 
+                    ? `<button class="btn btn-primary" id="owNextBtn" style="background:var(--primary-color); color:white; font-weight:600; padding:0.5rem 1.25rem;">Next →</button>`
+                    : `
+                      <div style="display:flex; gap:0.4rem;">
+                        <button class="btn btn-outline" id="owSaveDraftBtn" style="font-weight:600;">Save Draft</button>
+                        <button class="btn btn-outline" id="owApproveBriefBtn" style="font-weight:600; color:#059669; border-color:#6ee7b7; background:#ecfdf5;">Approve Brief</button>
+                        <button class="btn btn-primary" id="owActivateAgentsBtn" ${!owMeetingSummaryApproved ? 'disabled style="opacity:0.5; cursor:not-allowed; background:#94a3b8; border-color:#94a3b8;"' : 'style="background:#059669; border-color:#059669; color:white; font-weight:700;"'}>Activate AI Agents 🚀</button>
+                      </div>
+                    `
+                  }
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+    `;
+
+    bindWizardEvents();
+  }
+
+  function bindWizardEvents() {
+    // Close button
+    const closeBtn = document.getElementById('owCloseBtn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+      });
+    }
+
+    // Load Demo Data
+    const loadDemoBtn = document.getElementById('owLoadDemoDataBtn');
+    if (loadDemoBtn) {
+      loadDemoBtn.addEventListener('click', () => {
+        loadDemoData();
+        renderOnboardingStep();
+      });
+    }
+
+    // Previous Button
+    const prevBtn = document.getElementById('owPrevBtn');
+    if (prevBtn && owStep > 1) {
+      prevBtn.addEventListener('click', () => {
+        saveCurrentStepInputs();
+        owStep--;
+        renderOnboardingStep();
+      });
+    }
+
+    // Next Button
+    const nextBtn = document.getElementById('owNextBtn');
+    if (nextBtn && owStep < 10) {
+      nextBtn.addEventListener('click', () => {
+        saveCurrentStepInputs();
+        owStep++;
+        renderOnboardingStep();
+      });
+    }
+
+    // Inline step file upload
+    const stepUploadBtn = modal.querySelector('.ow-step-upload-btn');
+    if (stepUploadBtn) {
+      stepUploadBtn.addEventListener('click', () => {
+        const stepNum = parseInt(stepUploadBtn.getAttribute('data-step'));
+        const fileInput = document.getElementById(`stepUploadFile_${stepNum}`);
+        const file = fileInput ? fileInput.files[0] : null;
+        
+        if (!file) {
+          alert('Please select a file.');
+          return;
+        }
+        
+        const typeSelect = document.getElementById(`stepUploadType_${stepNum}`);
+        const campaignSelect = document.getElementById(`stepUploadCampaign_${stepNum}`);
+        const sourceType = typeSelect ? typeSelect.value : 'PDF';
+        const campaign = campaignSelect ? campaignSelect.value : 'General';
+        
+        let stepLabel = '';
+        if (stepNum === 1) stepLabel = 'Basic Details';
+        else if (stepNum === 3) stepLabel = 'Brand & Voice';
+        else if (stepNum === 4) stepLabel = 'Campaigns & Projects';
+        else if (stepNum === 5) stepLabel = 'Target Audience';
+        else if (stepNum === 6) stepLabel = 'Funders & Reporting';
+        
+        owEvidence.push({
+          id: 'ev_ow_' + Math.floor(Math.random() * 10000000),
+          name: file.name,
+          sourceType,
+          campaign,
+          campaign_id: campaign === 'General' ? '' : campaign,
+          verificationStatus: 'Verified',
+          textExcerpt: `File attached in ${stepLabel}: ${file.name}`,
+          dateUploaded: new Date().toISOString().split('T')[0],
+          uploaded_at: new Date().toISOString(),
+          onboarding_step: stepLabel,
+          source_type: sourceType,
+          verification_status: 'Verified',
+          file: file // Store the actual file object
+        });
+        
+        renderOnboardingStep();
+      });
+    }
+
+    // Inline step file delete
+    modal.querySelectorAll('.ow-del-step-file').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        owEvidence = owEvidence.filter(e => e.id !== id);
+        renderOnboardingStep();
+      });
     });
 
-    // Populate empty impact metrics
-    state.impactMetrics[id] = {
-      peopleReached: 0,
-      schoolsReached: 0,
-      learnersReached: 0,
-      workshopsHeld: 0,
-      communitiesEngaged: 0,
-      volunteers: 0,
-      campaignReach: 0,
-      mediaMentions: 0,
-      reportsSubmitted: 0,
-      fundingSecured: 0,
-      monthlyTrends: [
-        { month: 'Jan', reached: 0, funding: 0 },
-        { month: 'Feb', reached: 0, funding: 0 },
-        { month: 'Mar', reached: 0, funding: 0 },
-        { month: 'Apr', reached: 0, funding: 0 },
-        { month: 'May', reached: 0, funding: 0 },
-        { month: 'Jun', reached: 0, funding: 0 }
-      ],
-      customMetrics: []
+    // Goal pills appender in Step 2
+    if (owStep === 2) {
+      modal.querySelectorAll('.goal-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+          const txt = pill.getAttribute('data-txt');
+          const txtarea = document.getElementById('owGoalTop3');
+          if (txtarea) {
+            let current = txtarea.value.trim();
+            if (current) current += '\n';
+            txtarea.value = current + txt;
+            owClient.goalsTop3 = txtarea.value;
+          }
+        });
+      });
+    }
+
+    // Add Campaign button in Step 4
+    const addCampBtn = document.getElementById('owAddCampaignBtn');
+    if (addCampBtn) {
+      addCampBtn.addEventListener('click', () => {
+        const name = document.getElementById('cName').value.trim();
+        const goal = document.getElementById('cGoal').value.trim();
+        const description = document.getElementById('cDesc').value.trim();
+        const priority = document.getElementById('cPriority').value;
+        const startDate = document.getElementById('cStart').value;
+        const endDate = document.getElementById('cEnd').value;
+        const targetPlatforms = document.getElementById('cPlatforms').value.trim();
+        const monthlyContentTarget = document.getElementById('cTarget').value.trim();
+        const mainMessage = document.getElementById('cMessage').value.trim();
+        const callToAction = document.getElementById('cCta').value.trim();
+        const projectLead = document.getElementById('cLead').value.trim();
+        const relatedFunder = document.getElementById('cFunder').value.trim();
+
+        if (!name) {
+          alert('Campaign Name is required.');
+          return;
+        }
+
+        owCampaigns.push({
+          id: 'cmp_ow_' + Math.floor(Math.random() * 10000000),
+          name, goal, description, startDate, endDate, priority, targetPlatforms, monthlyContentTarget, mainMessage, callToAction, projectLead, relatedFunder
+        });
+
+        renderOnboardingStep();
+      });
+    }
+
+    // Delete campaign row
+    modal.querySelectorAll('.ow-del-campaign').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-idx'));
+        owCampaigns.splice(idx, 1);
+        renderOnboardingStep();
+      });
+    });
+
+    // Add Evidence button in Step 7
+    const addEvBtn = document.getElementById('owAddEvidenceBtn');
+    if (addEvBtn) {
+      addEvBtn.addEventListener('click', () => {
+        const fileInput = document.getElementById('eFile');
+        const file = fileInput ? fileInput.files[0] : null;
+        if (!file) {
+          alert('Please select a file.');
+          return;
+        }
+
+        const sourceType = document.getElementById('eType').value;
+        const campaign = document.getElementById('eCampaign').value;
+        const verificationStatus = document.getElementById('eVerification').value;
+        const textExcerpt = document.getElementById('eExcerpt').value.trim();
+
+        owEvidence.push({
+          id: 'ev_ow_' + Math.floor(Math.random() * 10000000),
+          name: file.name,
+          sourceType,
+          campaign,
+          campaign_id: campaign === 'General' ? '' : campaign,
+          verificationStatus,
+          textExcerpt: textExcerpt || `Ingested file: ${file.name}`,
+          dateUploaded: new Date().toISOString().split('T')[0],
+          file: file // Store the actual file object
+        });
+
+        renderOnboardingStep();
+      });
+    }
+
+    // Delete evidence row
+    modal.querySelectorAll('.ow-del-evidence').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-idx'));
+        owEvidence.splice(idx, 1);
+        renderOnboardingStep();
+      });
+    });
+
+    // Run Meeting Agent in Step 8
+    const runAgentBtn = document.getElementById('owRunMeetingAgentBtn');
+    if (runAgentBtn) {
+      runAgentBtn.addEventListener('click', () => {
+        const meetingInputText = document.getElementById('owMeetingText').value.trim();
+        if (!meetingInputText) {
+          alert('Please enter meeting notes or alignment conversation transcript text.');
+          return;
+        }
+        owMeetingText = meetingInputText;
+        owLoadingAnalysis = true;
+        renderOnboardingStep();
+
+        setTimeout(() => {
+          owLoadingAnalysis = false;
+          owMeetingSummary = simulateMeetingAgentAnalysis(owMeetingText);
+          renderOnboardingStep();
+        }, 1500);
+      });
+    }
+
+    // Approve initial summary checkbox bind in Step 8
+    const approveSummaryCheck = document.getElementById('owApproveSummaryCheck');
+    if (approveSummaryCheck) {
+      approveSummaryCheck.addEventListener('change', (e) => {
+        owMeetingSummaryApproved = e.target.checked;
+      });
+    }
+
+    // Step 9 final activation buttons
+    const saveDraftBtn = document.getElementById('owSaveDraftBtn');
+    if (saveDraftBtn) {
+      saveDraftBtn.addEventListener('click', () => {
+        saveClientWorkspace(false, false);
+      });
+    }
+
+    const approveBriefBtn = document.getElementById('owApproveBriefBtn');
+    if (approveBriefBtn) {
+      approveBriefBtn.addEventListener('click', () => {
+        saveClientWorkspace(true, false);
+      });
+    }
+
+    const activateAgentsBtn = document.getElementById('owActivateAgentsBtn');
+    if (activateAgentsBtn) {
+      activateAgentsBtn.addEventListener('click', () => {
+        if (!owMeetingSummaryApproved) {
+          alert('You must review and approve the Meeting Intelligence Agent summary before activating AI agents.');
+          return;
+        }
+        saveClientWorkspace(true, true);
+      });
+    }
+  }
+
+  function saveCurrentStepInputs() {
+    if (owStep === 1) {
+      owClient.name = document.getElementById('owName').value.trim();
+      owClient.logo = document.getElementById('owLogo').value.trim();
+      owClient.website = document.getElementById('owWebsite').value.trim();
+      owClient.country = document.getElementById('owCountry').value.trim();
+      owClient.sector = document.getElementById('owSector').value.trim();
+      owClient.primaryContact = document.getElementById('owContact').value.trim();
+      owClient.keyContact = owClient.primaryContact;
+      owClient.email = document.getElementById('owEmail').value.trim();
+      owClient.phone = document.getElementById('owPhone').value.trim();
+      owClient.monthlyFee = parseFloat(document.getElementById('owFee').value) || 0;
+      owClient.contractValue = owClient.monthlyFee * 12;
+      owClient.clientStatus = document.getElementById('owStatus').value;
+      owClient.startDate = document.getElementById('owStart').value;
+      owClient.renewalDate = document.getElementById('owEnd').value;
+    } else if (owStep === 2) {
+      owClient.goalsAchieve = document.getElementById('owGoalAchieve').value.trim();
+      owClient.goalsProblem = document.getElementById('owGoalProblem').value.trim();
+      owClient.goalsTop3 = document.getElementById('owGoalTop3').value.trim();
+      owClient.goalsSuccess = document.getElementById('owGoalSuccess').value.trim();
+      owClient.goalsChallenges = document.getElementById('owGoalChallenges').value.trim();
+      owClient.goalsSupport = document.getElementById('owGoalSupport').value.trim();
+      owClient.notes = owClient.goalsAchieve;
+    } else if (owStep === 3) {
+      owClient.mission = document.getElementById('owMission').value.trim();
+      owClient.shortDesc = document.getElementById('owShortDesc').value.trim();
+      owClient.toneOfVoice = document.getElementById('owTone').value.trim();
+      owClient.writingStyle = document.getElementById('owStyle').value.trim();
+      owClient.wordsToUse = document.getElementById('owWordsUse').value.trim();
+      owClient.wordsToAvoid = document.getElementById('owWordsAvoid').value.trim();
+      owClient.brandColours = document.getElementById('owColours').value.trim();
+      owClient.fonts = document.getElementById('owFonts').value.trim();
+      owClient.approvedHashtags = document.getElementById('owHashtags').value.trim();
+      owClient.socialHandles = document.getElementById('owHandles').value.trim();
+      owClient.canvaTemplates = document.getElementById('owCanva').value.trim();
+      owClient.posterExamples = document.getElementById('owPoster').value.trim();
+    } else if (owStep === 5) {
+      owClient.targetReach = document.getElementById('owAudienceMain').value.trim();
+      owClient.audienceCommunity = document.getElementById('owAudienceComm').value.trim();
+      owClient.audienceDonor = document.getElementById('owAudienceDonor').value.trim();
+      owClient.audienceGovernment = document.getElementById('owAudienceGov').value.trim();
+      owClient.audienceYouth = document.getElementById('owAudienceYouth').value.trim();
+      owClient.audienceMedia = document.getElementById('owAudienceMedia').value.trim();
+      owClient.locations = document.getElementById('owLocations').value.trim();
+      owClient.ageGroups = document.getElementById('owAgeGroups').value.trim();
+      owClient.languages = document.getElementById('owLanguages').value.trim();
+      owClient.culturalConsiderations = document.getElementById('owCultural').value.trim();
+      owClient.audienceUnderstanding = document.getElementById('owAudienceUnder').value.trim();
+      owClient.audienceAction = document.getElementById('owAudienceAct').value.trim();
+    } else if (owStep === 6) {
+      owClient.currentFunders = document.getElementById('owFunders').value.trim();
+      owClient.grantNames = document.getElementById('owGrants').value.trim();
+      owClient.reportingDeadlines = document.getElementById('owDeadlines').value.trim();
+      owClient.requiredDonorOutputs = document.getElementById('owOutputs').value.trim();
+      owClient.donorLogoRequirements = document.getElementById('owLogoRules').value.trim();
+      owClient.funderCommunicationRules = document.getElementById('owCommRules').value.trim();
+      owClient.requiredImpactMetrics = document.getElementById('owImpactMetrics').value.trim();
+      owClient.requiredEvidence = document.getElementById('owEvidenceReq').value.trim();
+      owClient.reportFrequency = document.getElementById('owFrequency').value;
+    } else if (owStep === 7) {
+      owClient.fbPageUrl = document.getElementById('owFbPageUrl').value.trim();
+      owClient.fbFollowers = parseInt(document.getElementById('owFbFollowers').value) || 0;
+      owClient.fbAvgReach = parseInt(document.getElementById('owFbAvgReach').value) || 0;
+      owClient.fbAvgEngagement = parseFloat(document.getElementById('owFbAvgEngagement').value) || 0.0;
+      owClient.igHandle = document.getElementById('owIgHandle').value.trim();
+      owClient.igFollowers = parseInt(document.getElementById('owIgFollowers').value) || 0;
+      owClient.igAvgReach = parseInt(document.getElementById('owIgAvgReach').value) || 0;
+      owClient.igAvgEngagement = parseFloat(document.getElementById('owIgAvgEngagement').value) || 0.0;
+      owClient.baselineTopPosts = document.getElementById('owBaselineTopPosts').value.trim();
+      owClient.baselineDemographics = document.getElementById('owBaselineDemographics').value.trim();
+      owClient.baselineStartDate = document.getElementById('owBaselineStartDate').value;
+    } else if (owStep === 9) {
+      owMeetingText = document.getElementById('owMeetingText').value.trim();
+    }
+  }
+
+  function saveClientWorkspace(isBriefApproved, areAgentsActivated) {
+    if (!owClient.name) {
+      alert('Organisation Name is required to save client workspace.');
+      return;
+    }
+
+    saveCurrentStepInputs();
+
+    const client_id = owClient.name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.floor(Math.random() * 1000);
+    
+    // Set first campaign as the default properties on the client object itself to pass brief completion checks
+    if (owCampaigns.length > 0) {
+      const mainCamp = owCampaigns[0];
+      owClient.campaignName = mainCamp.name;
+      owClient.campaignGoal = mainCamp.goal;
+      owClient.campaignStart = mainCamp.startDate;
+      owClient.campaignEnd = mainCamp.endDate;
+      owClient.campaignMessage = mainCamp.mainMessage;
+      owClient.campaignFacts = mainCamp.description;
+      owClient.keyFacts = mainCamp.description;
+      owClient.campaignCta = mainCamp.callToAction;
+      owClient.campaignPlatforms = mainCamp.targetPlatforms;
+      owClient.campaignPriority = mainCamp.priority;
+      owClient.campaignFrequency = mainCamp.monthlyContentTarget;
+    }
+
+    // Set first evidence file upload corresponding type fields on client object
+    owEvidence.forEach(e => {
+      if (e.sourceType === 'PDF') owClient.evidenceReports = e.name;
+      else if (e.sourceType === 'Text') owClient.evidenceNotes = e.name;
+      else if (e.sourceType === 'Excel') owClient.evidenceRegisters = e.name;
+      else if (e.sourceType === 'Image') owClient.evidencePhotos = e.name;
+    });
+
+    const finalClient = {
+      ...owClient,
+      id: client_id,
+      client_id: client_id,
+      status: isBriefApproved ? 'green' : 'yellow',
+      statusText: isBriefApproved ? 'Healthy' : 'Pending Onboarding',
+      isBriefApproved,
+      isMeetingSummaryApproved: owMeetingSummaryApproved,
+      areAgentsActivated,
+      activeProjectsCount: owCampaigns.length || 1,
+      reportsDueCount: owClient.reportFrequency === 'Quarterly' ? 1 : 0,
+      healthScore: isBriefApproved ? 100 : 50,
+      complianceScore: 100,
+      projectCompletionScore: 100,
+      lastActivity: 'Workspace onboarding completed',
+      nextDeadline: owClient.reportingDeadlines || 'None'
     };
 
+    let meetingRecord = null;
+    if (owMeetingSummary) {
+      meetingRecord = {
+        id: 'meet_ow_' + Math.floor(Math.random() * 10000000),
+        title: 'Initial Alignment Meeting & Briefing',
+        date: new Date().toISOString().split('T')[0],
+        notes: owMeetingSummary.summary,
+        transcript: owMeetingText,
+        status: 'Processed',
+        summaryData: owMeetingSummary
+      };
+      finalClient.onboardingMeetingSummary = owMeetingSummary;
+    }
+
+    // Map evidence and campaigns to client_id
+    const finalCampaigns = owCampaigns.map(c => ({
+      ...c,
+      client: client_id,
+      client_id: client_id,
+      progress: 0,
+      assigned: 'Content Calendar Agent',
+      status: 'Active'
+    }));
+
+    const campaignNameToId = {};
+    finalCampaigns.forEach(c => {
+      campaignNameToId[c.name] = c.id;
+    });
+
+    const finalEvidence = owEvidence.map(e => {
+      const campId = campaignNameToId[e.campaign] || '';
+      return {
+        ...e,
+        client: client_id,
+        client_id: client_id,
+        campaign_id: campId,
+        project: e.campaign || 'General',
+        uploaded_at: e.uploaded_at || new Date().toISOString()
+      };
+    });
+
+    // Ingest into central state
+    addClientWorkspace(finalClient, finalCampaigns, finalEvidence, meetingRecord);
+    
+    // Switch to new client
+    selectClient(client_id);
     modal.style.display = 'none';
-    notify();
-  });
+
+    alert(`Workspace "${finalClient.name}" created successfully!\nBrief Approved: ${isBriefApproved ? 'Yes' : 'No'}\nAI Agents Active: ${areAgentsActivated ? 'Yes' : 'No'}`);
+  }
+
+  modal.style.display = 'flex';
+  renderOnboardingStep();
 }

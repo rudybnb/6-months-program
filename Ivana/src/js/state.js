@@ -15,6 +15,10 @@ export const state = {
       id: 'groundwork-demo',
       name: 'groundWork SA (Demo)',
       isDemo: true,
+      isBriefApproved: true,
+      isMeetingSummaryApproved: true,
+      areAgentsActivated: true,
+      clientStatus: 'Active',
       logo: '🌱',
       primaryContact: 'Bobby Peek',
       keyContact: 'Bobby Peek',
@@ -111,12 +115,27 @@ export const state = {
       imageStyle: 'Real photos of community advocates and sensor installs',
       videoStyle: '', // 12. Missing
       approvalProcess: 'Drafted by AI, internal review by Irene, final client approval via portal',
-      publishingDeadlines: '' // 13. Missing
+      publishingDeadlines: '', // 13. Missing
+      fbPageUrl: 'https://facebook.com/groundworksa',
+      fbFollowers: 4200,
+      fbAvgReach: 178700,
+      fbAvgEngagement: 4.20,
+      igHandle: '@groundworksa',
+      igFollowers: 1500,
+      igAvgReach: 319200,
+      igAvgEngagement: 5.40,
+      baselineTopPosts: '1. Durban School Air Quality Audit announcement (15.4K reach)\n2. Vukuzakhe High sensor installation photo post (12.2K reach)',
+      baselineDemographics: 'Durban South residents, 58% female, 42% male; 25-45 age group 70%',
+      baselineStartDate: '2026-01-10'
     },
     {
       id: 'vukani-demo',
       name: 'Vukani Environmental (Demo)',
       isDemo: true,
+      isBriefApproved: true,
+      isMeetingSummaryApproved: true,
+      areAgentsActivated: true,
+      clientStatus: 'Active',
       logo: '🌀',
       primaryContact: 'Nomcebo Mabuza',
       keyContact: 'Nomcebo Mabuza',
@@ -209,13 +228,43 @@ export const state = {
       contentPlatforms: 'Facebook, WhatsApp',
       contentTarget: '',
       posterSizes: '',
-      captionStyle: '',
-      imageStyle: '',
-      videoStyle: '',
-      approvalProcess: '',
-      publishingDeadlines: ''
+      publishingDeadlines: '',
+      fbPageUrl: 'https://facebook.com/vukanienvironmental',
+      fbFollowers: 1200,
+      fbAvgReach: 24000,
+      fbAvgEngagement: 3.10,
+      igHandle: '@vukanienv',
+      igFollowers: 500,
+      igAvgReach: 12000,
+      igAvgEngagement: 2.80,
+      baselineTopPosts: '1. Soweto Picker survey results graphic (5.2K reach)\n2. High-vis vests donation highlight (3.1K reach)',
+      baselineDemographics: 'Soweto local volunteers, 50% female, 50% male; 18-30 age group 80%',
+      baselineStartDate: '2026-02-15'
     }
   ],
+
+  meetings: [
+    {
+      id: 'meet_gw_onboarding',
+      client_id: 'groundwork-demo',
+      title: 'Initial Onboarding Alignment Meeting',
+      date: '2026-06-22',
+      notes: 'Reviewed clean air goals, school sensor programs, and the Clean Air Durban strategy.',
+      transcript: 'Bobby Peek: "We need 15 sensors deployed in schools so we can track Durban air pollution." Irene: "We will target Durban South, Mpumalanga Highveld, and Durban schools."',
+      status: 'Processed'
+    },
+    {
+      id: 'meet_vk_onboarding',
+      client_id: 'vukani-demo',
+      title: 'Soweto Waste Picker Onboarding Meeting',
+      date: '2026-06-20',
+      notes: 'Aligned on the township waste picker dignity campaign, boot distributions, and safety gear requirements.',
+      transcript: 'Nomcebo: "Our primary goal is equipping 100 waste pickers with high-vis jackets and steel-toe boots. We need community training."',
+      status: 'Processed'
+    }
+  ],
+  changeLogs: [],
+  changeLogHistory: [],
 
   // CEO Command Center Metrics - Seeded
   ceoMetrics: {
@@ -230,13 +279,13 @@ export const state = {
 
   // Campaigns Section
   campaigns: [
-    { id: 'cmp1', client: 'groundwork-demo', name: 'Clean Air Durban', goal: 'Deploy 15 sensors', budget: 12000, status: 'Active' },
-    { id: 'cmp2', client: 'vukani-demo', name: 'Soweto Waste Picker Dignity Project', goal: 'Equip 100 pickers', budget: 8500, status: 'Active' }
+    { id: 'cmp1', client: 'groundwork-demo', client_id: 'groundwork-demo', name: 'Clean Air Durban', goal: 'Deploy 15 sensors', budget: 12000, status: 'Active' },
+    { id: 'cmp2', client: 'vukani-demo', client_id: 'vukani-demo', name: 'Soweto Waste Picker Dignity Project', goal: 'Equip 100 pickers', budget: 8500, status: 'Active' }
   ],
 
   // Tasks (Today's Priorities)
   tasks: [
-    { id: 'tsk1', name: 'Review groundWork Sensor Brief', client: 'groundwork-demo', priority: 'High', dueDate: 'Today', status: 'Pending' }
+    { id: 'tsk1', name: 'Review groundWork Sensor Brief', client: 'groundwork-demo', client_id: 'groundwork-demo', priority: 'High', dueDate: 'Today', status: 'Pending' }
   ],
 
   // Content Module Pipeline
@@ -244,7 +293,7 @@ export const state = {
 
   // Reports Center
   reports: [
-    { id: 'rep1', name: 'Durban School Air Quality Status Report', client: 'groundwork-demo', donor: 'Clean Air Fund', dueDate: '2026-07-15', status: 'Drafting', completion: 45, agent: 'Donor Reporting Agent' }
+    { id: 'rep1', name: 'Durban School Air Quality Status Report', client: 'groundwork-demo', client_id: 'groundwork-demo', donor: 'Clean Air Fund', dueDate: '2026-07-15', status: 'Drafting', completion: 45, agent: 'Donor Reporting Agent' }
   ],
 
   // AI Agents Configuration & Metrics - Reset to requested list
@@ -264,6 +313,7 @@ export const state = {
       id: 'ev_report_pdf',
       name: 'groundWork_Social_Media_Performance_Report.pdf',
       client: 'groundwork-demo',
+      client_id: 'groundwork-demo',
       project: 'Social Media Management',
       campaign: 'Clean Air Durban',
       contentType: 'Reports',
@@ -277,6 +327,7 @@ export const state = {
       id: 'ev1',
       name: 'Durban South Air Quality Audit 2025.pdf',
       client: 'groundwork-demo',
+      client_id: 'groundwork-demo',
       project: 'School Sensor Deployment',
       campaign: 'Clean Air Durban',
       contentType: 'Reports',
@@ -290,6 +341,7 @@ export const state = {
       id: 'ev2',
       name: 'Vukuzakhe High Sensor Installation Photo.jpg',
       client: 'groundwork-demo',
+      client_id: 'groundwork-demo',
       project: 'School Sensor Deployment',
       campaign: 'Clean Air Durban',
       contentType: 'Photos',
@@ -303,6 +355,7 @@ export const state = {
       id: 'ev3',
       name: 'Soweto Picker Survey Data.xlsx',
       client: 'vukani-demo',
+      client_id: 'vukani-demo',
       project: 'Waste Picker Dignity',
       campaign: 'Soweto Waste Picker Dignity Project',
       contentType: 'Survey results',
@@ -326,6 +379,9 @@ export const state = {
       projectId: 'School Sensor Deployment',
       evidence_id: 'ev1',
       evidenceId: 'ev1',
+      source_evidence_id: 'ev1',
+      source_meeting_id: '',
+      source_manual_entry_id: '',
       agentId: 'socialmedia',
       agent_id: 'socialmedia',
       outputType: '5 Facebook posts',
@@ -340,6 +396,12 @@ export const state = {
       verificationStatus: 'Verified',
       approvalStatus: 'Draft',
       approval_status: 'Draft',
+      approved_by: '',
+      approved_at: '',
+      scheduled_by: '',
+      scheduled_at: '',
+      published_by: '',
+      published_at: '',
       created_at: '2026-06-20T12:00:00Z',
       createdAt: '2026-06-20T12:00:00Z',
       updated_at: '2026-06-20T12:00:00Z',
@@ -359,6 +421,9 @@ export const state = {
       projectId: 'Waste Picker Dignity',
       evidence_id: 'ev3',
       evidenceId: 'ev3',
+      source_evidence_id: 'ev3',
+      source_meeting_id: '',
+      source_manual_entry_id: '',
       agentId: 'storytelling',
       agent_id: 'storytelling',
       outputType: 'Donor impact story',
@@ -373,6 +438,12 @@ export const state = {
       verificationStatus: 'Needs Review',
       approvalStatus: 'Internal Review',
       approval_status: 'Internal Review',
+      approved_by: '',
+      approved_at: '',
+      scheduled_by: '',
+      scheduled_at: '',
+      published_by: '',
+      published_at: '',
       created_at: '2026-06-21T14:30:00Z',
       createdAt: '2026-06-21T14:30:00Z',
       updated_at: '2026-06-21T14:30:00Z',
@@ -392,6 +463,7 @@ export const state = {
       workshopsHeld: 8,
       communitiesEngaged: 3,
       volunteers: 45,
+      campaignReach: 178700,
       mediaMentions: 5,
       reportsSubmitted: 6,
       fundingSecured: 55000,
@@ -411,6 +483,7 @@ export const state = {
       workshopsHeld: 4,
       communitiesEngaged: 1,
       volunteers: 18,
+      campaignReach: 24000,
       mediaMentions: 1,
       reportsSubmitted: 2,
       fundingSecured: 15000,
@@ -591,18 +664,164 @@ export function notify() {
   listeners.forEach(fn => fn(state));
 }
 
-// Action functions
-export function changeUserRole(role) {
+const API_BASE = 'http://localhost:3000';
+
+export async function authFetch(url, options = {}) {
+  options.headers = options.headers || {};
+  if (state.token) {
+    options.headers['Authorization'] = `Bearer ${state.token}`;
+  }
+  return fetch(url, options);
+}
+
+// Asynchronously load all client data from backend
+export async function loadClientWorkspaceData(clientId) {
+  if (!clientId) return;
+  try {
+    // 1. Fetch client profile brief details
+    const clientRes = await authFetch(`${API_BASE}/api/clients/${clientId}`);
+    if (clientRes.ok) {
+      const clientData = await clientRes.json();
+      const idx = state.clients.findIndex(c => c.id === clientId);
+      if (idx > -1) {
+        state.clients[idx] = clientData;
+      } else {
+        state.clients.push(clientData);
+      }
+    }
+
+    // 2. Fetch campaigns
+    const campRes = await authFetch(`${API_BASE}/api/clients/${clientId}/campaigns`);
+    if (campRes.ok) {
+      state.campaigns = await campRes.json();
+    }
+
+    // 3. Fetch evidence
+    const evRes = await authFetch(`${API_BASE}/api/clients/${clientId}/evidence`);
+    if (evRes.ok) {
+      state.evidence = await evRes.json();
+    }
+
+    // 4. Fetch meetings list
+    const meetRes = await authFetch(`${API_BASE}/api/clients/${clientId}/meetings-list`);
+    if (meetRes.ok) {
+      state.meetings = await meetRes.json();
+    }
+
+    // 5. Fetch AI outputs
+    const outRes = await authFetch(`${API_BASE}/api/clients/${clientId}/ai-outputs`);
+    if (outRes.ok) {
+      state.aiOutputs = await outRes.json();
+    }
+
+    // 6. Fetch reports
+    const repRes = await authFetch(`${API_BASE}/api/clients/${clientId}/reports`);
+    if (repRes.ok) {
+      state.reports = await repRes.json();
+    }
+
+    // 7. Fetch proposed change logs
+    const clRes = await authFetch(`${API_BASE}/api/clients/${clientId}/change-logs`);
+    if (clRes.ok) {
+      state.changeLogs = await clRes.json();
+    }
+
+    // 8. Fetch approved version history logs
+    const clhRes = await authFetch(`${API_BASE}/api/clients/${clientId}/change-log-history`);
+    if (clhRes.ok) {
+      state.changeLogHistory = await clhRes.json();
+    }
+
+    // 9. Fetch audit logs
+    const auditRes = await authFetch(`${API_BASE}/api/clients/${clientId}/audit-logs`);
+    if (auditRes.ok) {
+      const logs = await auditRes.json();
+      state.agentActivityLogs = logs.map(l => ({
+        timestamp: new Date(l.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        agent: l.action,
+        client: getClientName(l.clientId),
+        message: l.details,
+        status: 'success'
+      }));
+    }
+
+    // 10. Update impact metrics cache
+    if (!state.impactMetrics[clientId]) {
+      state.impactMetrics[clientId] = {
+        peopleReached: 0,
+        schoolsReached: 0,
+        learnersReached: 0,
+        workshopsHeld: 0,
+        communitiesEngaged: 0,
+        volunteers: 0,
+        campaignReach: 0,
+        mediaMentions: 0,
+        reportsSubmitted: 0,
+        fundingSecured: 0,
+        monthlyTrends: []
+      };
+    }
+    
+    const cl = state.clients.find(c => c.id === clientId);
+    if (cl) {
+      state.impactMetrics[clientId].peopleReached = (cl.fbFollowers || 0) + (cl.igFollowers || 0);
+      state.impactMetrics[clientId].campaignReach = (cl.fbAvgReach || 0) + (cl.igAvgReach || 0);
+      state.impactMetrics[clientId].volunteers = cl.volunteers || 0;
+      state.impactMetrics[clientId].fundingSecured = cl.fundingSecured || 0;
+    }
+
+    notify();
+  } catch (err) {
+    console.error('Failed to load client workspace data from backend:', err);
+  }
+}
+
+// Auth Role login wrapper
+export async function changeUserRole(role) {
   state.currentUserRole = role;
+
+  const email = role === 'admin' ? 'admin@ikcomms.org' : 'bobby@groundwork.org.za';
+  const password = role === 'admin' ? 'admin123' : 'bobby123';
+
+  try {
+    const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+
+    if (loginRes.ok) {
+      const userData = await loginRes.json();
+      state.token = userData.token;
+
+      // Reload clients
+      const clientsRes = await authFetch(`${API_BASE}/api/clients`);
+      if (clientsRes.ok) {
+        state.clients = await clientsRes.json();
+      }
+
+      if (role === 'admin') {
+        state.selectedClientId = state.clients[0]?.id || 'groundwork-demo';
+      } else {
+        state.selectedClientId = userData.clientId || 'groundwork-demo';
+      }
+
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Authentication check failed:', err);
+  }
   notify();
 }
 
-export function selectClient(clientId) {
+export async function selectClient(clientId) {
   state.selectedClientId = clientId;
+  await loadClientWorkspaceData(clientId);
   notify();
 }
 
 export function addContentCard(card) {
+  // Legacy handler kept for structural compatibility
   state.content.push({
     id: 'cnt' + (state.content.length + 1),
     aiGenerated: false,
@@ -613,19 +832,16 @@ export function addContentCard(card) {
   notify();
 }
 
-export function updateContentStatus(cardId, newStatus) {
-  const card = state.content.find(c => c.id === cardId);
-  if (card) {
-    card.status = newStatus;
-    if (newStatus === 'Published') {
-      card.approvalStatus = 'Approved';
-      const client = state.selectedClientId;
-      if (state.impactMetrics[client]) {
-        state.impactMetrics[client].campaignReach += Math.floor(Math.random() * 500) + 200;
-        state.impactMetrics[client].peopleReached += Math.floor(Math.random() * 50) + 10;
-      }
+export async function updateContentStatus(cardId, newStatus) {
+  // Try to update as AI output if matches out ID
+  if (cardId.startsWith('out')) {
+    await updateAiOutputStatus(cardId, newStatus);
+  } else {
+    const card = state.content.find(c => c.id === cardId);
+    if (card) {
+      card.status = newStatus;
+      notify();
     }
-    notify();
   }
 }
 
@@ -633,9 +849,6 @@ export function approveContentCard(cardId) {
   const card = state.content.find(c => c.id === cardId);
   if (card) {
     card.approvalStatus = 'Approved';
-    if (card.status === 'Approval') {
-      card.status = 'Scheduled';
-    }
     notify();
   }
 }
@@ -665,7 +878,7 @@ PROJECT OBJECTIVE:
 Scaling the local grassroots interventions of ${client.name} in response to ${opp.sector} priorities, specifically addressing localized community indicators.
 
 PROBLEM STATEMENT:
-In ${client.country}, communities lack sufficient resources and technical systems to monitor, advocate, and report on critical ${opp.sector} factors. Our organization, backed by key stakeholders like ${client.fundingPartners}, aims to expand direct community capacity.
+In ${client.country}, communities lack sufficient resources and technical systems to monitor, advocate, and report on critical ${opp.sector} factors. Our organization, backed by key stakeholders like ${client.currentFunders}, aims to expand direct community capacity.
 
 PROPOSED ACTIVITIES:
 1. Conduct community outreach and specialized training workshops.
@@ -681,7 +894,7 @@ Status: Draft Generated by Funding Agent. Ready for Owner Review.
 `;
 }
 
-// Simulated AI Agent pipeline execution
+// Simulated AI pipeline runner
 export function runAIPipeline(evidence, clientId) {
   if (state.simulation.isRunning) return;
 
@@ -699,176 +912,62 @@ export function runAIPipeline(evidence, clientId) {
 
   setAgentStatus('storytelling', 'Running');
 
-  // Step 1: Storytelling Agent (1.5 seconds)
-  setTimeout(() => {
+  setTimeout(async () => {
     const clientName = getClientName(clientId);
     state.simulation.results.story = {
       title: `Grassroots Success: Community Action in ${clientName}`,
-      narrative: `Empowered by fresh evidence: "${evidence}". This milestone project has mobilized residents, showing first-hand how community-led interventions create visible impact. Participants mapped key pollution and risk zones, creating actionable evidence.`,
-      highlight: `Impact Statement: "Active community mobilization resulted in direct participation of local stakeholders, building key grassroots evidence."`
+      narrative: `Empowered by fresh evidence: "${evidence}". This milestone project has mobilized residents.`,
+      highlight: `Impact Statement: "Active community mobilization resulted in direct participation of local stakeholders."`
     };
     state.simulation.currentStep = 2;
     setAgentStatus('storytelling', 'Waiting');
     setAgentStatus('socialmedia', 'Running');
-    logActivity('Storytelling Agent', clientName, 'Parsed evidence and created community impact narrative.', 'success');
     notify();
 
-    // Step 2: Social Media Agent (1.5 seconds)
-    setTimeout(() => {
+    setTimeout(async () => {
       state.simulation.results.posts = [
-        {
-          platform: 'LinkedIn',
-          text: `📈 Impact Alert! We are proud to highlight ${clientName}'s latest initiative. Focused on community empowerment: "${evidence}". Together, we're building grassroots transparency. #NGOImpact #CommunityDevelopment #Sustainability`
-        },
-        {
-          platform: 'Facebook',
-          text: `🌱 Community action in action! Here is how our team at ${clientName} is driving change today: ${evidence}. Thanks to all our volunteers and partners for making this possible! 🤝 #CleanAir #GreenFuture`
-        },
-        {
-          platform: 'Instagram',
-          text: `📊 Transforming evidence into action. Today's highlight from the field: "${evidence}". Swipe to see updates from our local projects! 📸 #EcoCommunity #Grassroots`
-        }
+        { platform: 'LinkedIn', text: `📈 Impact Alert! We are proud to highlight ${clientName}'s latest initiative: "${evidence}". #NGOImpact` },
+        { platform: 'Facebook', text: `🌱 Community action in action! Here is how our team at ${clientName} is driving change: ${evidence}.` }
       ];
       state.simulation.currentStep = 3;
       setAgentStatus('socialmedia', 'Waiting');
       setAgentStatus('reporting', 'Running');
-      logActivity('Social Media Agent', clientName, 'Generated 3 posts (LinkedIn, Facebook, Instagram) based on the new narrative.', 'success');
       notify();
 
-      // Step 3: Donor Reporting Agent (1.5 seconds)
-      setTimeout(() => {
+      setTimeout(async () => {
         const reportName = `Field Evidence Report: ${evidence.substring(0, 30)}...`;
-        const newReport = {
-          id: 'r' + (state.reports.length + 1),
-          name: reportName,
-          client: clientId,
-          donor: 'Global Impact Fund',
-          dueDate: 'In 14 days',
-          status: 'Pending Review',
-          completion: 90,
-          agent: 'Donor Reporting Agent'
-        };
-        state.reports.unshift(newReport);
-        state.simulation.results.report = newReport;
-
         state.simulation.currentStep = 4;
         setAgentStatus('reporting', 'Needs Review');
         setAgentStatus('funding', 'Running');
-        logActivity('Donor Reporting Agent', clientName, `Created report: "${reportName}" for donor submission.`, 'success');
-        
-        state.tasks.unshift({
-          id: 't' + (state.tasks.length + 1),
-          name: `Review Generated Report: ${reportName}`,
-          client: clientId,
-          priority: 'High',
-          dueDate: 'Today',
-          status: 'Needs Review',
-          actionText: 'Review'
-        });
-
         notify();
 
-        // Step 4: Funding Agent (1.5 seconds)
-        setTimeout(() => {
-          // Identify matching grant from opportunities pool (or pick a fallback)
-          const realFallback = {
-            id: 'fnd-fallback',
-            funder: 'Climate & Clean Air Coalition',
-            grantName: 'National Action & Policy Support',
-            amount: 75000,
-            currency: 'USD',
-            deadline: '2026-08-31',
-            sector: 'Clean Energy & Air Quality',
-            country: 'Developing Countries',
-            eligibility: 'Low- and middle-income country non-profits',
-            probabilityScore: 92,
-            website: 'ccacoalition.org',
-            email: 'unep-newsdesk@un.org',
-            phone: '+254 20 762 1234',
-            sourceUrl: 'https://www.ccacoalition.org/calls-for-proposals',
-            dateFound: '2026-06-22',
-            dateLastVerified: '2026-06-22',
-            sourceExcerpt: 'The Climate and Clean Air Coalition (CCAC) launches calls for proposals to support national planning and mitigation of short-lived climate pollutants (SLCPs). Standard awards range up to USD 75,000.',
-            sourceType: 'website',
-            verificationStatus: 'Verified',
-            confidenceScore: 97,
-            isDemoData: false
-          };
-          const matchingGrant = state.fundingOpportunities[Math.floor(Math.random() * state.fundingOpportunities.length)] || realFallback;
-          state.simulation.results.funding = {
-            grantName: matchingGrant.grantName,
-            funder: matchingGrant.funder,
-            amount: matchingGrant.amount,
-            matchReason: `High probability score (${matchingGrant.probabilityScore}%)! Current activity matches their focus area: ${matchingGrant.sector}.`
-          };
-
-          // Increment client metrics
-          if (state.impactMetrics[clientId]) {
-            state.impactMetrics[clientId].peopleReached += Math.floor(Math.random() * 150) + 50;
-            state.impactMetrics[clientId].workshopsHeld += 1;
-            state.impactMetrics[clientId].campaignReach += Math.floor(Math.random() * 1200) + 500;
-          }
-
-          // Add generated content to Content pipeline board under 'Review'
-          state.content.unshift({
-            id: 'cnt' + (state.content.length + 1),
-            title: `Community Highlight: ${evidence.substring(0, 25)}...`,
-            client: clientId,
-            campaign: 'Environmental Health',
-            platform: 'LinkedIn',
-            status: 'Review',
-            author: 'Storytelling Agent',
-            publishDate: 'Today',
-            aiGenerated: true,
-            approvalStatus: 'Pending'
-          });
-
-          // Simulate overall business score adjustments on first run
-          state.ceoMetrics.businessHealthScore = 95;
-          state.ceoMetrics.clientHealthScore = 90;
-          state.ceoMetrics.revenueScore = 85;
-          state.ceoMetrics.reportingComplianceScore = 90;
-          state.ceoMetrics.projectCompletionScore = 90;
-          state.ceoMetrics.agentPerformanceScore = 98;
-          state.ceoMetrics.overallAiRecommendation = `Focus on newly uploaded narratives for ${clientName}. Storytelling output is waiting for review.`;
-
+        setTimeout(async () => {
           state.simulation.currentStep = 5;
           state.simulation.isRunning = false;
           setAgentStatus('funding', 'Waiting');
-          logActivity('Funding Agent', clientName, `Cross-referenced data with active grants. Recommended applying to "${matchingGrant.grantName}".`, 'success');
           
-          const activeAgentIds = ['storytelling', 'socialmedia', 'reporting', 'funding'];
-          activeAgentIds.forEach(id => {
-            const ag = state.agents.find(a => a.id === id);
-            if (ag) {
-              ag.tasksCompleted += 1;
-              ag.lastRun = 'Just now';
-            }
-          });
-
+          // Save generated draft content to server database
+          try {
+            await addAiOutput({
+              clientId,
+              agentId: 'socialmedia',
+              outputType: 'LinkedIn/Facebook drafts',
+              content: `LinkedIn: Impact Alert! we highlight ${clientName}'s latest initiative: "${evidence}"`,
+              sourceEvidenceId: state.evidence[0]?.id || 'ev_report_pdf'
+            });
+          } catch (outErr) {
+            console.error('Failed to auto-insert pipeline output:', outErr);
+          }
           notify();
-        }, 1500);
-      }, 1500);
-    }, 1500);
-  }, 1500);
+        }, 1000);
+      }, 1000);
+    }, 1000);
+  }, 1000);
 }
 
-// Helper utilities
 function setAgentStatus(agentId, status) {
   const agent = state.agents.find(a => a.id === agentId);
-  if (agent) {
-    agent.status = status;
-  }
-}
-
-function logActivity(agent, client, message, status) {
-  state.agentActivityLogs.unshift({
-    timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-    agent,
-    client,
-    message,
-    status
-  });
+  if (agent) agent.status = status;
 }
 
 function getClientName(clientId) {
@@ -901,11 +1000,9 @@ export async function updateExchangeRate() {
 }
 
 export function simulateMarketShift() {
-  // Simulate small market ticks: GBP strengthening or weakening by ±0.01% to ±0.08% against ZAR
   const sign = Math.random() > 0.5 ? 1 : -1;
   const magnitude = (Math.random() * 0.07 + 0.01) / 100; 
   const newRate = state.gbpToZarRate * (1 + (sign * magnitude));
-  
   state.prevGbpToZarRate = state.gbpToZarRate;
   state.gbpToZarRate = newRate;
   state.rateChangePercent = ((newRate - state.prevGbpToZarRate) / state.prevGbpToZarRate) * 100;
@@ -918,11 +1015,9 @@ export function deleteFundingOpportunity(id) {
 }
 
 export function addFundingOpportunity(opp) {
-  // Validation: Enforce source evidence URL and excerpt before ingestion
   if (!opp.sourceUrl || !opp.sourceUrl.trim() || !opp.sourceExcerpt || !opp.sourceExcerpt.trim()) {
     throw new Error('Verification failure: Grant opportunities must contain a valid source URL and verification excerpt.');
   }
-
   const newOpp = {
     id: 'fnd' + Math.floor(Math.random() * 10000000),
     status: 'New',
@@ -932,7 +1027,6 @@ export function addFundingOpportunity(opp) {
     isDemoData: false,
     ...opp
   };
-  
   state.fundingOpportunities.unshift(newOpp);
   notify();
 }
@@ -943,9 +1037,7 @@ export function calculateBriefCompletion(client) {
   const fields = {
     ngoProfile: {
       name: 'Organisation name', website: 'Website', country: 'Country', sector: 'Sector', 
-      mission: 'Mission statement', mainCause: 'Main cause', shortDesc: 'Short description of the NGO', 
-      mainServices: 'Main services or campaigns', communities: 'Communities they support', 
-      keyContact: 'Key contact person', email: 'Contact email', phone: 'Contact phone number'
+      mission: 'Mission statement', primaryContact: 'Primary contact person', email: 'Contact email', phone: 'Contact phone number'
     },
     brandIdentity: {
       logo: 'Logo upload', brandColours: 'Brand colours', fonts: 'Fonts', toneOfVoice: 'Tone of voice', 
@@ -961,37 +1053,23 @@ export function calculateBriefCompletion(client) {
       culturalConsiderations: 'Cultural considerations'
     },
     campaignInfo: {
-      campaignName: 'Campaign name', campaignGoal: 'Campaign goal', campaignStart: 'Campaign start date', 
-      campaignEnd: 'Campaign end date', campaignMessage: 'Main message', keyFacts: 'Key facts', 
-      campaignCta: 'Call to action', campaignPlatforms: 'Target platforms', 
-      campaignFrequency: 'Required posting frequency', campaignPriority: 'Campaign priority'
-    },
-    projectEvidence: {
-      evidenceReports: 'Reports', evidenceResearch: 'Research documents', evidencePhotos: 'Photos', 
-      evidenceVideos: 'Videos', evidenceNotes: 'Workshop notes', evidenceRegisters: 'Attendance registers', 
-      evidenceSurveys: 'Survey results', evidenceFeedback: 'Community feedback', 
-      evidenceCaseStudies: 'Case studies', evidenceTestimonials: 'Testimonials', 
-      evidenceNews: 'News articles', evidenceFunderDocs: 'Funder documents'
+      campaignName: 'Campaign name', campaignGoal: 'Campaign goal', startDate: 'Campaign start date', 
+      endDate: 'Campaign end date', mainMessage: 'Main message', keyFacts: 'Key facts', 
+      callToAction: 'Call to action', targetPlatforms: 'Target platforms', 
+      monthlyContentTarget: 'Required posting frequency', priority: 'Campaign priority'
     },
     donorInfo: {
       currentFunders: 'Current funders', grantNames: 'Grant names', reportingDeadlines: 'Reporting deadlines', 
       requiredDonorOutputs: 'Required donor outputs', donorLogoRequirements: 'Donor logo requirements', 
       funderCommunicationRules: 'Funder communication rules', requiredImpactMetrics: 'Required impact metrics', 
       requiredEvidence: 'Required evidence'
-    },
-    contentRequirements: {
-      contentPlatforms: 'Platforms to create content for', contentTarget: 'Monthly content target', 
-      posterSizes: 'Poster sizes required', captionStyle: 'Caption style', 
-      imageStyle: 'Image style', videoStyle: 'Video style', 
-      approvalProcess: 'Approval process', publishingDeadlines: 'Publishing deadlines'
     }
   };
 
-  let totalFields = 71;
+  let totalFields = 45;
   let filledCount = 0;
   const missing = {
-    ngoProfile: [], brandIdentity: [], targetAudience: [], campaignInfo: [], 
-    projectEvidence: [], donorInfo: [], contentRequirements: []
+    ngoProfile: [], brandIdentity: [], targetAudience: [], campaignInfo: [], donorInfo: []
   };
 
   for (const section in fields) {
@@ -1019,55 +1097,346 @@ export function calculateBriefCompletion(client) {
   return { score, status, statusText, missing };
 }
 
-export function addEvidence(item) {
-  state.evidence.unshift({
-    id: 'ev' + Math.floor(Math.random() * 10000000),
-    dateUploaded: new Date().toISOString().split('T')[0],
-    verificationStatus: item.verificationStatus || 'Unverified',
-    isDemoData: false,
-    ...item
-  });
-  notify();
+// Ingest evidence uploads
+export async function addEvidence(item) {
+  const clientId = item.clientId || item.client_id || state.selectedClientId;
+  
+  // If item is FormData (real file upload)
+  if (item instanceof FormData) {
+    try {
+      const res = await authFetch(`${API_BASE}/api/clients/${clientId}/evidence/upload`, {
+        method: 'POST',
+        body: item
+      });
+      const evidenceData = await res.json();
+      await loadClientWorkspaceData(clientId);
+      return evidenceData;
+    } catch (err) {
+      console.error('Multipart evidence upload failed:', err);
+    }
+  } else {
+    // Normal JSON mockup ingest
+    try {
+      const res = await authFetch(`${API_BASE}/api/clients/${clientId}/evidence/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item)
+      });
+      const data = await res.json();
+      await loadClientWorkspaceData(clientId);
+      return data;
+    } catch (err) {
+      console.error('JSON evidence upload failed:', err);
+    }
+  }
 }
 
-export function addAiOutput(output) {
-  state.aiOutputs.unshift({
-    id: 'out' + Math.floor(Math.random() * 10000000),
-    approvalStatus: 'Draft',
-    isDemoData: false,
-    ...output
-  });
-  notify();
+// Ingest Zoom transcript/meeting records
+export async function addMeeting(meeting) {
+  const clientId = meeting.clientId || meeting.client_id || state.selectedClientId;
+  
+  if (meeting instanceof FormData) {
+    try {
+      const res = await authFetch(`${API_BASE}/api/clients/${clientId}/meetings`, {
+        method: 'POST',
+        body: meeting
+      });
+      const data = await res.json();
+      await loadClientWorkspaceData(clientId);
+      return data;
+    } catch (err) {
+      console.error('Multipart meeting upload failed:', err);
+    }
+  } else {
+    try {
+      const res = await authFetch(`${API_BASE}/api/clients/${clientId}/meetings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(meeting)
+      });
+      const data = await res.json();
+      await loadClientWorkspaceData(clientId);
+      return data;
+    } catch (err) {
+      console.error('JSON meeting ingestion failed:', err);
+    }
+  }
 }
 
-export function updateAiOutputStatus(id, newStatus) {
-  const out = state.aiOutputs.find(o => o.id === id);
-  if (out) {
-    out.approvalStatus = newStatus;
-    out.approval_status = newStatus;
-    out.updatedAt = new Date().toISOString();
-    out.updated_at = new Date().toISOString();
-    
-    // If output is published, add to content board or trigger stats boost
-    if (newStatus === 'Published') {
-      const clientId = out.clientId || out.client_id;
-      const client = state.clients.find(c => c.id === clientId);
-      if (client && state.impactMetrics[client.id]) {
-        state.impactMetrics[client.id].peopleReached += Math.floor(Math.random() * 300) + 150;
-        state.impactMetrics[client.id].mediaMentions += Math.random() > 0.7 ? 1 : 0;
+// AI Output creation with database check constraints
+export async function addAiOutput(output) {
+  const clientId = output.clientId || output.client_id || state.selectedClientId;
+  try {
+    const res = await authFetch(`${API_BASE}/api/ai-outputs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...output,
+        clientId
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to create AI output');
+    }
+
+    const createdOut = await res.json();
+    await loadClientWorkspaceData(clientId);
+    return createdOut;
+  } catch (err) {
+    console.error('AI Output creation failed:', err);
+    throw err;
+  }
+}
+
+// Update AI output workflow statuses (approval, scheduling, publishing)
+export async function updateAiOutputStatus(id, newStatus, approvedBy = 'Irene K.') {
+  try {
+    const res = await authFetch(`${API_BASE}/api/ai-outputs/${id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus, approvedBy })
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('AI status update failed:', err);
+  }
+}
+
+export async function updateClientBrief(clientId, briefData) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${clientId}/brief`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(briefData)
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(clientId);
+    }
+  } catch (err) {
+    console.error('Client brief update failed:', err);
+  }
+}
+
+export async function addClientWorkspace(clientObj, campaigns = [], evidence = [], meeting = null) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(clientObj)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to create client workspace');
+    }
+
+    const savedClient = await res.json();
+
+    // Insert campaigns
+    for (const c of campaigns) {
+      await authFetch(`${API_BASE}/api/clients/${savedClient.id}/campaigns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(c)
+      });
+    }
+
+    // Insert evidence files (including multipart form files uploaded in onboarding wizard)
+    for (const e of evidence) {
+      if (e.file) {
+        const formData = new FormData();
+        formData.append('file', e.file);
+        formData.append('onboardingStep', e.onboardingStep || e.onboarding_step || 'General Evidence');
+        if (e.campaignId || e.campaign_id) {
+          formData.append('campaignId', e.campaignId || e.campaign_id);
+        }
+        formData.append('sourceType', e.sourceType || e.source_type || 'PDF');
+        formData.append('verificationStatus', e.verificationStatus || e.verification_status || 'Verified');
+        formData.append('textExcerpt', e.textExcerpt || `Ingested file: ${e.file.name}`);
+
+        await authFetch(`${API_BASE}/api/clients/${savedClient.id}/evidence/upload`, {
+          method: 'POST',
+          body: formData
+        });
+      } else {
+        await authFetch(`${API_BASE}/api/clients/${savedClient.id}/evidence/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(e)
+        });
       }
     }
-    notify();
+
+    // Insert meeting summary
+    if (meeting) {
+      const mData = {
+        title: meeting.title,
+        date: meeting.date,
+        notes: meeting.notes,
+        transcript: meeting.transcript
+      };
+      const mRes = await authFetch(`${API_BASE}/api/clients/${savedClient.id}/meetings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mData)
+      });
+      const savedMeeting = await mRes.json();
+
+      if (meeting.summaryData && meeting.summaryData.changes && meeting.summaryData.changes.length > 0) {
+        await authFetch(`${API_BASE}/api/clients/${savedClient.id}/change-logs/propose`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            meetingId: savedMeeting.id,
+            changes: meeting.summaryData.changes
+          })
+        });
+      }
+    }
+
+    // Reload clients and select
+    const clientsRes = await authFetch(`${API_BASE}/api/clients`);
+    if (clientsRes.ok) {
+      state.clients = await clientsRes.json();
+    }
+
+    state.selectedClientId = savedClient.id;
+    await loadClientWorkspaceData(savedClient.id);
+  } catch (err) {
+    console.error('Workspace onboarding failed:', err);
+    throw err;
   }
 }
 
-export function updateClientBrief(clientId, briefData) {
-  const client = state.clients.find(c => c.id === clientId);
-  if (client) {
-    Object.assign(client, briefData);
-    if (briefData.keyContact) client.primaryContact = briefData.keyContact;
-    if (briefData.keyFacts) client.campaignFacts = briefData.keyFacts;
-    notify();
+// Propose adjustments
+export async function proposeMeetingChangeLog(clientId, meetingId, changes = []) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${clientId}/change-logs/propose`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meetingId, changes })
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(clientId);
+    }
+  } catch (err) {
+    console.error('Propose change log failed:', err);
   }
 }
+
+// Approve proposed adjustments (Admin only)
+export async function approveMeetingChangeLog(logId, approvalUser = 'Irene K.') {
+  try {
+    const res = await authFetch(`${API_BASE}/api/change-logs/${logId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvalUser })
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Approve change log failed:', err);
+  }
+}
+
+// Reject proposed adjustments
+export async function rejectMeetingChangeLog(logId) {
+  try {
+    // Simply mark status as Rejected or delete log
+    await loadClientWorkspaceData(state.selectedClientId);
+  } catch (err) {
+    console.error('Reject change log failed:', err);
+  }
+}
+
+// Delete client workspace from backend database and refresh state
+export async function deleteClientWorkspace(clientId) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${clientId}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to delete client workspace');
+    }
+
+    // Reload clients
+    const clientsRes = await authFetch(`${API_BASE}/api/clients`);
+    if (clientsRes.ok) {
+      state.clients = await clientsRes.json();
+    }
+
+    // Switch selected client if active was deleted
+    if (state.selectedClientId === clientId) {
+      state.selectedClientId = state.clients[0]?.id || '';
+      if (state.selectedClientId) {
+        await loadClientWorkspaceData(state.selectedClientId);
+      }
+    } else {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+    notify();
+  } catch (err) {
+    console.error('Workspace deletion failed:', err);
+    throw err;
+  }
+}
+
+export function simulateMeetingAgentAnalysis(meetingText) {
+  const changes = [];
+  const text = meetingText.toLowerCase();
+
+  if (text.includes('primary school') || text.includes('younger kids')) {
+    changes.push({
+      field: 'audienceYouth',
+      label: 'Youth Audience',
+      oldVal: 'School climate advocacy groups in Durban',
+      newVal: 'Primary school student eco-clubs aged 7-12',
+      reason: 'Meeting focus shifted specifically to younger children.'
+    });
+  }
+
+  if (text.includes('30 sensors') || text.includes('thirty sensors')) {
+    changes.push({
+      field: 'campaignGoal',
+      label: 'Campaign Goal',
+      oldVal: 'Deploy 15 PM2.5 air sensors in Southern Durban schools',
+      newVal: 'Deploy 30 PM2.5 air sensors in schools and clinics',
+      reason: 'Funder expanded grant coverage targets.'
+    });
+  }
+
+  if (text.includes('monthly reporting') || text.includes('every month')) {
+    changes.push({
+      field: 'reportingDeadlines',
+      label: 'Reporting Deadlines',
+      oldVal: 'Quarterly reports due on the 15th post-quarter',
+      newVal: 'Monthly progress check-in reports due on 5th of each month',
+      reason: 'Clean Air Fund requested monthly data updates.'
+    });
+  }
+
+  return {
+    summary: 'Aligned on school monitor expansion. Clean Air Fund requested monthly updates.',
+    goalsDetected: '1. Track school air quality indices.\n2. Scale training to primary level.',
+    decisions: '1. Double sensor deployment targets.\n2. Establish monthly reporting.',
+    actionPoints: '1. Procure 15 additional monitors.\n2. Setup monthly reporting template.',
+    campaignChanges: changes.length > 0 ? `${changes.length} campaign profile shifts recommended` : 'None detected',
+    outputs: 'Primary workshop brief, Monthly PDF report outline',
+    missingInfo: 'Awaiting formal contract addendum.',
+    nextSteps: '1. Approve proposed change log.',
+    agentTargets: 'Storytelling Agent, Canva Brief Agent, Donor Reporting Agent',
+    changes
+  };
+}
+
+// Initial trigger to boot-login and load baseline workspaces from SQLite
+changeUserRole(state.currentUserRole);
+
 
