@@ -13,12 +13,28 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'ik-communications-jwt-key-2026';
+
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://ik-communications.onrender.com'
+];
 
 // Enable CORS and cookie parsing
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (
+      ALLOWED_ORIGINS.includes(origin) ||
+      origin.endsWith('.onrender.com') ||
+      /^http:\/\/localhost:\d+$/.test(origin)
+    ) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 app.use(express.json());

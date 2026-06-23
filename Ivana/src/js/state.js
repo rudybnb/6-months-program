@@ -664,7 +664,9 @@ export function notify() {
   listeners.forEach(fn => fn(state));
 }
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:3000'
+  : 'https://ik-communications-api.onrender.com';
 
 export async function authFetch(url, options = {}) {
   options.headers = options.headers || {};

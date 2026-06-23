@@ -8,3 +8,14 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+
+  - type: web
+    name: ik-communications-api
+    runtime: node
+    buildCommand: npm install && cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
