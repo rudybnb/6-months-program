@@ -40,6 +40,12 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Serve static frontend files from 'dist' directory
+const distDir = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+}
+
 // Initialize file uploads folders
 const uploadsDir = path.join(__dirname, 'storage', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -805,6 +811,19 @@ app.get('/api/clients/:id/audit-logs', authenticateToken, checkClientAccess, asy
     res.json(data);
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// Serve SPA frontend index.html fallback for client-side routing
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  const indexHtmlPath = path.join(__dirname, '..', 'dist', 'index.html');
+  if (fs.existsSync(indexHtmlPath)) {
+    res.sendFile(indexHtmlPath);
+  } else {
+    res.status(404).send('Static frontend not built yet.');
   }
 });
 

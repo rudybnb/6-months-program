@@ -665,8 +665,8 @@ export function notify() {
 }
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:3000'
-  : 'https://ik-communications-api.onrender.com';
+  ? (window.location.port === '5173' ? 'http://localhost:3000' : window.location.origin)
+  : (window.location.hostname === 'ik-communications.onrender.com' ? 'https://ik-communications-api.onrender.com' : window.location.origin);
 
 export async function authFetch(url, options = {}) {
   options.headers = options.headers || {};
