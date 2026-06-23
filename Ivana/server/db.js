@@ -226,10 +226,18 @@ export async function initDb() {
       table.string('verificationStatus').defaultTo('Verified');
       table.string('approvalStatus').defaultTo('Draft');
 
+      // New columns from operational tracker sheet
+      table.string('contentPillar').nullable();
+      table.text('internalNotes').nullable();
+      table.text('clientNotes').nullable();
+      table.string('platform').nullable();
+      table.string('title').nullable();
+
       // Single source trace columns
       table.string('sourceEvidenceId').references('id').inTable('evidence').onDelete('SET NULL');
       table.string('sourceMeetingId').references('id').inTable('meetings').onDelete('SET NULL');
       table.string('sourceManualEntryId').references('id').inTable('evidence').onDelete('SET NULL');
+      table.string('sourceRequestId').references('id').inTable('content_requests').onDelete('SET NULL');
 
       // Audits
       table.string('approvedBy');
@@ -250,6 +258,38 @@ export async function initDb() {
         'chk_single_source'
       );
     });
+  } else {
+    // Add columns to existing ai_outputs if missing
+    if (!await db.schema.hasColumn('ai_outputs', 'contentPillar')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('contentPillar').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'internalNotes')) {
+      await db.schema.table('ai_outputs', table => {
+        table.text('internalNotes').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'clientNotes')) {
+      await db.schema.table('ai_outputs', table => {
+        table.text('clientNotes').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'platform')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('platform').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'title')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('title').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'sourceRequestId')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('sourceRequestId').references('id').inTable('content_requests').onDelete('SET NULL');
+      });
+    }
   }
 
   // Change Logs table
@@ -308,11 +348,149 @@ export async function initDb() {
     });
   }
 
+  // Content Requests table
+  if (!await db.schema.hasTable('content_requests')) {
+    await db.schema.createTable('content_requests', table => {
+      table.string('id').primary();
+      table.string('clientId').references('id').inTable('client_workspaces').onDelete('CASCADE');
+      table.string('campaignId').references('id').inTable('campaigns').onDelete('SET NULL');
+      table.string('sourceEvidenceId').references('id').inTable('evidence').onDelete('SET NULL');
+      table.string('title').notNullable();
+      table.string('contentFor').nullable();
+      table.text('description').nullable();
+      table.string('assignee').nullable();
+      table.string('dueDate').nullable();
+      table.string('status').defaultTo('Awaiting Instruction');
+      table.text('sourceMaterial').nullable();
+      table.string('requestedBy').nullable();
+      table.timestamp('createdAt').defaultTo(db.fn.now());
+    });
+  } else {
+    if (!await db.schema.hasColumn('content_requests', 'campaignId')) {
+      await db.schema.table('content_requests', table => {
+        table.string('campaignId').references('id').inTable('campaigns').onDelete('SET NULL');
+      });
+    }
+    if (!await db.schema.hasColumn('content_requests', 'sourceEvidenceId')) {
+      await db.schema.table('content_requests', table => {
+        table.string('sourceEvidenceId').references('id').inTable('evidence').onDelete('SET NULL');
+      });
+    }
+  }
+
+  // Media Library table
+  if (!await db.schema.hasTable('media_library')) {
+    await db.schema.createTable('media_library', table => {
+      table.string('id').primary();
+      table.string('clientId').references('id').inTable('client_workspaces').onDelete('CASCADE');
+      table.string('campaignId').references('id').inTable('campaigns').onDelete('SET NULL');
+      table.string('evidenceId').references('id').inTable('evidence').onDelete('SET NULL');
+      table.string('subject').notNullable();
+      table.string('mediaType').nullable();
+      table.text('archiveLink').nullable();
+      table.string('sourceFrom').nullable();
+      table.text('usageRights').nullable();
+      table.timestamp('createdAt').defaultTo(db.fn.now());
+    });
+  } else {
+    if (!await db.schema.hasColumn('media_library', 'campaignId')) {
+      await db.schema.table('media_library', table => {
+        table.string('campaignId').references('id').inTable('campaigns').onDelete('SET NULL');
+      });
+    }
+    if (!await db.schema.hasColumn('media_library', 'evidenceId')) {
+      await db.schema.table('media_library', table => {
+        table.string('evidenceId').references('id').inTable('evidence').onDelete('SET NULL');
+      });
+    }
+    if (!await db.schema.hasColumn('media_library', 'usageRights')) {
+      await db.schema.table('media_library', table => {
+        table.text('usageRights').nullable();
+      });
+    }
+  }
+
+  // Awareness Days table
+  if (!await db.schema.hasTable('awareness_days')) {
+    await db.schema.createTable('awareness_days', table => {
+      table.string('id').primary();
+      table.string('occasion').notNullable();
+      table.string('date').nullable();
+      table.string('contentType').nullable();
+      table.string('drivingCampaign').nullable();
+      table.string('numberOfPosts').nullable();
+      table.text('possiblePhotos').nullable();
+      table.string('status').defaultTo('Draft');
+      table.string('globalOrClientSpecific').defaultTo('global');
+      table.string('clientId').references('id').inTable('client_workspaces').onDelete('CASCADE');
+      table.string('campaignId').references('id').inTable('campaigns').onDelete('SET NULL');
+      table.text('createPostAction').nullable();
+    });
+  } else {
+    if (!await db.schema.hasColumn('awareness_days', 'globalOrClientSpecific')) {
+      await db.schema.table('awareness_days', table => {
+        table.string('globalOrClientSpecific').defaultTo('global');
+      });
+    }
+    if (!await db.schema.hasColumn('awareness_days', 'clientId')) {
+      await db.schema.table('awareness_days', table => {
+        table.string('clientId').references('id').inTable('client_workspaces').onDelete('CASCADE');
+      });
+    }
+    if (!await db.schema.hasColumn('awareness_days', 'campaignId')) {
+      await db.schema.table('awareness_days', table => {
+        table.string('campaignId').references('id').inTable('campaigns').onDelete('SET NULL');
+      });
+    }
+    if (!await db.schema.hasColumn('awareness_days', 'createPostAction')) {
+      await db.schema.table('awareness_days', table => {
+        table.text('createPostAction').nullable();
+      });
+    }
+  }
+
   console.log('Database tables setup successfully.');
   await seedInitialData();
 }
 
 async function seedInitialData() {
+  // Always seed new tables if they are empty
+  const awarenessCount = await db('awareness_days').count('id as count').first();
+  if (awarenessCount.count === 0) {
+    const days = [
+      { id: 'aw1', occasion: 'World Day of Social Justice', date: 'February 20', contentType: 'Post', drivingCampaign: '', numberOfPosts: '1', possiblePhotos: '', status: 'Scheduled', globalOrClientSpecific: 'global', createPostAction: 'Draft a post highlighting World Day of Social Justice and its impact on school initiatives.' },
+      { id: 'aw2', occasion: 'Cradle to Grave Webinar', date: 'February 24', contentType: 'Post', drivingCampaign: 'EHC', numberOfPosts: '8', possiblePhotos: '', status: 'Scheduled', globalOrClientSpecific: 'global', createPostAction: 'Create speaker quote templates for the Cradle to Grave webinar series.' },
+      { id: 'aw3', occasion: 'International Waste Pickers Day', date: 'March 1', contentType: 'Mix', drivingCampaign: 'ZW', numberOfPosts: '15+', possiblePhotos: '', status: 'Scheduled', globalOrClientSpecific: 'global', createPostAction: 'Feature local waste picking cooperatives and post collection metrics.' },
+      { id: 'aw4', occasion: "International Women's Day", date: 'March 8', contentType: 'Post', drivingCampaign: 'Comms', numberOfPosts: '1', possiblePhotos: '', status: 'Draft', globalOrClientSpecific: 'global', createPostAction: 'Highlight female environmental justice advocates leading the clean air campaigns.' },
+      { id: 'aw5', occasion: 'Human Rights Day', date: 'March 21', contentType: 'Reel', drivingCampaign: 'HRD', numberOfPosts: '1', possiblePhotos: '', status: 'Scheduled', globalOrClientSpecific: 'global', createPostAction: 'Record a quick video on environment as a core human right.' },
+      { id: 'aw6', occasion: 'Sharpville Robert Sobukwe Commem', date: 'March 21', contentType: 'Post', drivingCampaign: 'Comms, HRD', numberOfPosts: '1', possiblePhotos: '', status: 'Scheduled', globalOrClientSpecific: 'global', createPostAction: 'Post a historical reminder linking socio-economic rights to green justice.' },
+      { id: 'aw7', occasion: 'International Day of Forest', date: 'March 21', contentType: 'FOE Report', drivingCampaign: '', numberOfPosts: '1', possiblePhotos: '', status: 'Draft', globalOrClientSpecific: 'global', createPostAction: 'Share FOE report excerpts regarding reforestation programs.' },
+      { id: 'aw8', occasion: 'World Water Day', date: 'March 22', contentType: "Reposts of partner's", drivingCampaign: '', numberOfPosts: '1', possiblePhotos: '', status: 'Draft', globalOrClientSpecific: 'global', createPostAction: 'Reshare water contamination monitoring reports in local townships.' },
+      { id: 'aw9', occasion: 'World Meteorological Day', date: 'March 23', contentType: 'Post', drivingCampaign: '', numberOfPosts: '1', possiblePhotos: '', status: 'Draft', globalOrClientSpecific: 'global', createPostAction: 'Explain the difference between weather variations and climate shifts.' }
+    ];
+    await db('awareness_days').insert(days);
+  }
+
+  const reqCount = await db('content_requests').count('id as count').first();
+  if (reqCount.count === 0) {
+    const reqs = [
+      { id: 'cr1', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'Venezuela', contentFor: 'gW Content', description: 'Highlight air filters in South America.', assignee: 'Ivana', dueDate: 'Week of 9/02/2026', status: 'Completed', sourceMaterial: 'Venezuela Air Quality Logs', requestedBy: 'Bobby Peek' },
+      { id: 'cr2', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'Cradle to grave Webinar', contentFor: 'gW Content', description: 'Post on each speaker -\n 8 posts', assignee: 'Kim', dueDate: 'Week of 9/02/2026', status: 'Completed', sourceMaterial: 'Flyer C2G Africa - Google Docs', requestedBy: 'Bobby Peek' },
+      { id: 'cr3', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'AMSA Protest deadly air', contentFor: 'CAF Content', description: 'Interventions and citizen logs.', assignee: 'Ivana', dueDate: 'TBD', status: 'Awaiting Instruction', sourceMaterial: 'AMSA VEJA Protest 2023 Complete', requestedBy: 'Irene K.' }
+    ];
+    await db('content_requests').insert(reqs);
+  }
+
+  const mediaCount = await db('media_library').count('id as count').first();
+  if (mediaCount.count === 0) {
+    const media = [
+      { id: 'm1', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'Vaal Air quality workshop', mediaType: 'Video and Photos', archiveLink: 'VEJA Air Quality and Health Workshop2025', sourceFrom: 'Tsepang', usageRights: 'Consent forms signed. Free for social media use.' },
+      { id: 'm2', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'Lephalale Air qulaity workshop', mediaType: 'Photos', archiveLink: 'Lephalale AQHealth CAF', sourceFrom: 'Dorothy', usageRights: 'Internal distribution only.' },
+      { id: 'm3', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'AMSA VEJA Protest', mediaType: 'Videos and photos', archiveLink: 'AMSA VEJA Protest 2023 Complete', sourceFrom: 'Tsepang', usageRights: 'Creative commons. Credit Vaal Environmental Justice Alliance.' }
+    ];
+    await db('media_library').insert(media);
+  }
+
   const userCount = await db('users').count('id as count').first();
   if (userCount.count > 0) return;
 

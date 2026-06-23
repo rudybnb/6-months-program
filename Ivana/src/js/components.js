@@ -23,7 +23,11 @@ import {
   rejectMeetingChangeLog,
   simulateMeetingAgentAnalysis,
   addMeeting,
-  deleteClientWorkspace
+  deleteClientWorkspace,
+  addContentRequest,
+  updateContentRequestStatus,
+  addMediaAsset,
+  updateContentDetails
 } from './state.js';
 
 import { renderLineChart, renderBarChart } from './chart.js';
@@ -1532,158 +1536,415 @@ function renderMeetingsLogHtml(client_id) {
 let activePlatformFilter = 'All';
 
 export function renderContentModule(container) {
+  const activeContentSubTab = localStorage.getItem('activeContentSubTab') || 'Board';
   const columns = ['Ideas', 'Drafting', 'Review', 'Approval', 'Scheduled', 'Published'];
   const clientsFilter = state.currentUserRole === 'admin' ? state.clients : state.clients.filter(c => c.id === state.selectedClientId);
   const platforms = ['All', 'LinkedIn', 'Facebook', 'Instagram', 'WhatsApp', 'Email Newsletter', 'Website'];
 
+  const subtabs = [
+    { id: 'Board', name: '📋 Board' },
+    { id: 'Requests', name: '📥 Content Requests' },
+    { id: 'Media', name: '🖼️ Media Library' },
+    { id: 'Calendar', name: '📅 Awareness Days Calendar' }
+  ];
+
   container.innerHTML = `
     <div class="section-header-row mb-6">
       <div>
-        <h1>Content Pipeline Board</h1>
-        <p class="subtitle">Review and schedule AI social media drafts, newsletters, and stories</p>
+        <h1>Content Hub</h1>
+        <p class="subtitle">Manage content pipeline, requests, media assets, and commemorative awareness days</p>
       </div>
-      <button class="btn btn-primary" id="addContentIdeaBtn">+ Create Content Idea</button>
+      <div class="header-actions" id="contentHubHeaderActions"></div>
     </div>
 
-    <!-- Buffer-style platform filter bar -->
-    <div class="kanban-filters-row">
-      ${platforms.map(p => `
-        <button class="btn btn-sm ${activePlatformFilter === p ? 'btn-primary' : 'btn-outline'} platform-filter-btn" data-platform="${p}">
-          ${p}
+    <!-- Sub-tabbed Navigation -->
+    <div class="cr-tabs-nav mb-6" style="margin-top: -0.5rem;">
+      ${subtabs.map(tab => `
+        <button class="cr-tab-btn ${activeContentSubTab === tab.id ? 'active' : ''}" data-subtab="${tab.id}">
+          ${tab.name}
         </button>
       `).join('')}
     </div>
 
-    <!-- Columns Container -->
-    <div class="kanban-board">
-      ${columns.map(col => {
-        // Filter content by column status, workspace scope client, and platform filter
-        const columnCards = state.content.filter(cnt => {
-          const matchCol = cnt.status === col;
-          const matchClient = state.currentUserRole === 'admin' || cnt.client === state.selectedClientId;
-          const matchPlatform = activePlatformFilter === 'All' || cnt.platform === activePlatformFilter;
-          return matchCol && matchClient && matchPlatform;
-        });
-
-        return `
-          <div class="kanban-column" data-status="${col}">
-            <div class="column-header">
-              <h3>${col}</h3>
-              <span class="column-count">${columnCards.length}</span>
-            </div>
-            
-            <div class="column-cards-container" id="kanban-col-${col}">
-              ${columnCards.map(c => {
-                const ngo = state.clients.find(cl => cl.id === c.client) || { name: 'Client', logo: '🌱' };
-                let appStatusClass = c.approvalStatus.toLowerCase();
-                
-                return `
-                  <div class="content-card card" draggable="true" data-card-id="${c.id}">
-                    <div class="card-tag-row">
-                      <span class="platform-badge">${c.platform}</span>
-                      ${c.aiGenerated ? '<span class="ai-badge">🤖 AI</span>' : ''}
-                    </div>
-                    <h4 class="card-title">${c.title}</h4>
-                    <p class="card-campaign">${c.campaign}</p>
-                    
-                    <div class="card-client-row">
-                      <span class="mini-logo">${ngo.logo}</span>
-                      <span class="mini-name">${ngo.name}</span>
-                    </div>
-
-                    <div class="card-footer mt-4">
-                      <span class="approval-tag ${appStatusClass}">${c.approvalStatus}</span>
-                      
-                      <div class="card-actions">
-                        ${col === 'Approval' ? `
-                          <button class="btn btn-xs btn-outline kanban-approve-btn" data-card-id="${c.id}">Approve</button>
-                        ` : ''}
-                        
-                        <!-- Simple column shifter for mock interaction -->
-                        <div class="column-shifter">
-                          <button class="shift-btn prev-col" data-card-id="${c.id}">◀</button>
-                          <button class="shift-btn next-col" data-card-id="${c.id}">▶</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-              ${columnCards.length === 0 ? '<div class="column-empty">Empty</div>' : ''}
-            </div>
-          </div>
-        `;
-      }).join('')}
-    </div>
+    <div id="contentSubtabContent"></div>
   `;
 
-  // Bind Actions
-  const addIdeaBtn = document.getElementById('addContentIdeaBtn');
-  if (addIdeaBtn) {
-    addIdeaBtn.addEventListener('click', () => {
-      openNewIdeaModal(clientsFilter);
-    });
-  }
-
-  // Platform Filter buttons bind
-  container.querySelectorAll('.platform-filter-btn').forEach(btn => {
+  // Bind sub-tabs clicks
+  container.querySelectorAll('.cr-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      activePlatformFilter = btn.getAttribute('data-platform');
+      const subtab = btn.getAttribute('data-subtab');
+      localStorage.setItem('activeContentSubTab', subtab);
       renderContentModule(container);
     });
   });
 
-  // Content card click (opens Buffer style composer)
-  container.querySelectorAll('.content-card').forEach(card => {
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.shift-btn') || e.target.closest('.kanban-approve-btn')) return;
-      const cardId = card.getAttribute('data-card-id');
-      const item = state.content.find(c => c.id === cardId);
-      if (item) {
-        openBufferComposerModal(item);
-      }
-    });
-  });
+  const contentArea = container.querySelector('#contentSubtabContent');
+  const headerActions = container.querySelector('#contentHubHeaderActions');
 
-  // Column shift handlers
-  container.querySelectorAll('.shift-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const cardId = btn.getAttribute('data-card-id');
-      const isNext = btn.classList.contains('next-col');
-      const card = state.content.find(c => c.id === cardId);
-      
-      if (card) {
-        const currentIndex = columns.indexOf(card.status);
-        let newIndex = isNext ? currentIndex + 1 : currentIndex - 1;
-        if (newIndex >= 0 && newIndex < columns.length) {
-          updateContentStatus(cardId, columns[newIndex]);
+  if (activeContentSubTab === 'Board') {
+    // Render Header Button
+    headerActions.innerHTML = `<button class="btn btn-primary" id="addContentIdeaBtn">+ Create Content Idea</button>`;
+    const addIdeaBtn = document.getElementById('addContentIdeaBtn');
+    if (addIdeaBtn) {
+      addIdeaBtn.addEventListener('click', () => {
+        openNewIdeaModal(clientsFilter);
+      });
+    }
+
+    // Render Board HTML
+    contentArea.innerHTML = `
+      <!-- Buffer-style platform filter bar -->
+      <div class="kanban-filters-row mb-4">
+        ${platforms.map(p => `
+          <button class="btn btn-sm ${activePlatformFilter === p ? 'btn-primary' : 'btn-outline'} platform-filter-btn" data-platform="${p}">
+            ${p}
+          </button>
+        `).join('')}
+      </div>
+
+      <!-- Columns Container -->
+      <div class="kanban-board">
+        ${columns.map(col => {
+          // Filter content by column status, workspace scope client, and platform filter
+          const columnCards = state.content.filter(cnt => {
+            const matchCol = cnt.status === col;
+            const matchClient = state.currentUserRole === 'admin' || cnt.client === state.selectedClientId;
+            const matchPlatform = activePlatformFilter === 'All' || cnt.platform === activePlatformFilter;
+            return matchCol && matchClient && matchPlatform;
+          });
+
+          return `
+            <div class="kanban-column" data-status="${col}">
+              <div class="column-header">
+                <h3>${col}</h3>
+                <span class="column-count">${columnCards.length}</span>
+              </div>
+              
+              <div class="column-cards-container" id="kanban-col-${col}">
+                ${columnCards.map(c => {
+                  const ngo = state.clients.find(cl => cl.id === c.client) || { name: 'Client', logo: '🌱' };
+                  let appStatusClass = c.approvalStatus.toLowerCase().replace(' ', '-');
+                  
+                  return `
+                    <div class="content-card card" draggable="true" data-card-id="${c.id}">
+                      <div class="card-tag-row" style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                        <span class="platform-badge" style="font-size: 0.68rem; padding: 1px 4px;">${c.platform}</span>
+                        ${c.contentPillar ? `<span class="pillar-badge" style="font-size: 0.68rem; padding: 1px 4px; border-radius: 4px; ${getColorForPillar(c.contentPillar)}">${c.contentPillar}</span>` : ''}
+                        ${c.aiGenerated ? '<span class="ai-badge" style="font-size: 0.68rem; padding: 1px 4px;">🤖 AI</span>' : ''}
+                      </div>
+                      <h4 class="card-title">${c.title || 'Untitled Post'}</h4>
+                      <p class="card-campaign">${c.campaign || 'General Content'}</p>
+                      
+                      <div class="card-client-row">
+                        <span class="mini-logo">${ngo.logo}</span>
+                        <span class="mini-name">${ngo.name}</span>
+                      </div>
+
+                      <div class="card-footer mt-4">
+                        <span class="approval-tag ${appStatusClass}">${c.approvalStatus}</span>
+                        
+                        <div class="card-actions">
+                          ${col === 'Approval' ? `
+                            <button class="btn btn-xs btn-primary kanban-approve-btn" data-card-id="${c.id}">Approve</button>
+                          ` : ''}
+                          
+                          <!-- Simple column shifter for mock interaction -->
+                          <div class="column-shifter">
+                            <button class="shift-btn prev-col" data-card-id="${c.id}">◀</button>
+                            <button class="shift-btn next-col" data-card-id="${c.id}">▶</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+                ${columnCards.length === 0 ? '<div class="column-empty">Empty</div>' : ''}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    // Platform Filter buttons bind
+    contentArea.querySelectorAll('.platform-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activePlatformFilter = btn.getAttribute('data-platform');
+        renderContentModule(container);
+      });
+    });
+
+    // Content card click
+    contentArea.querySelectorAll('.content-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.shift-btn') || e.target.closest('.kanban-approve-btn')) return;
+        const cardId = card.getAttribute('data-card-id');
+        const item = state.content.find(c => c.id === cardId);
+        if (item) {
+          openBufferComposerModal(item, container);
         }
-      }
+      });
     });
-  });
 
-  // Approve button inside Kanban card
-  container.querySelectorAll('.kanban-approve-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const cardId = btn.getAttribute('data-card-id');
-      approveContentCard(cardId);
+    // Column shift handlers
+    contentArea.querySelectorAll('.shift-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cardId = btn.getAttribute('data-card-id');
+        const isNext = btn.classList.contains('next-col');
+        const card = state.content.find(c => c.id === cardId);
+        
+        if (card) {
+          const currentIndex = columns.indexOf(card.status);
+          let newIndex = isNext ? currentIndex + 1 : currentIndex - 1;
+          if (newIndex >= 0 && newIndex < columns.length) {
+            updateContentStatus(cardId, columns[newIndex]);
+          }
+        }
+      });
     });
-  });
+
+    // Approve button inside Kanban card
+    contentArea.querySelectorAll('.kanban-approve-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cardId = btn.getAttribute('data-card-id');
+        approveContentCard(cardId);
+      });
+    });
+
+  } else if (activeContentSubTab === 'Requests') {
+    headerActions.innerHTML = `<button class="btn btn-primary" id="addRequestBtn">+ Request Content</button>`;
+    const addRequestBtn = document.getElementById('addRequestBtn');
+    if (addRequestBtn) {
+      addRequestBtn.addEventListener('click', () => {
+        openNewRequestModal();
+      });
+    }
+
+    const requests = state.currentUserRole === 'admin' 
+      ? state.contentRequests 
+      : (state.contentRequests || []).filter(r => r.clientId === state.selectedClientId);
+
+    contentArea.innerHTML = `
+      <div class="card">
+        <div class="table-container">
+          <table class="clean-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Title</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Campaign</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Assigned To</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Requested By</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Due Date</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Status</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Source Evidence</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${requests.map(r => {
+                const camp = state.campaigns.find(c => c.id === r.campaignId);
+                const ev = state.evidence.find(e => e.id === r.sourceEvidenceId);
+                const evLink = ev 
+                  ? `<a href="#evidence" class="evidence-details-link" style="color: var(--primary-color); text-decoration: underline;" data-ev-id="${ev.id}">📄 ${ev.originalName || ev.name}</a>` 
+                  : '<span style="color: var(--text-muted); font-size: 0.75rem;">None</span>';
+                
+                return `
+                  <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 0.75rem 1rem; font-weight: 600;">
+                      ${r.title}
+                      ${r.description ? `<div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400; margin-top: 2px; white-space: pre-wrap;">${r.description}</div>` : ''}
+                    </td>
+                    <td style="padding: 0.75rem 1rem;">${camp ? camp.name : '<span style="color: var(--text-muted);">General</span>'}</td>
+                    <td style="padding: 0.75rem 1rem;">${r.assignee || '<span style="color: var(--text-muted);">Unassigned</span>'}</td>
+                    <td style="padding: 0.75rem 1rem;">${r.requestedBy || 'N/A'}</td>
+                    <td style="padding: 0.75rem 1rem;">${r.dueDate || 'TBD'}</td>
+                    <td style="padding: 0.75rem 1rem;">
+                      <select class="live-request-status-select clean-select" data-request-id="${r.id}" style="padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 0.8rem;">
+                        <option value="Awaiting Instruction" ${r.status === 'Awaiting Instruction' ? 'selected' : ''}>Awaiting Instruction</option>
+                        <option value="Drafting" ${r.status === 'Drafting' ? 'selected' : ''}>Drafting</option>
+                        <option value="Pending Review" ${r.status === 'Pending Review' ? 'selected' : ''}>Pending Review</option>
+                        <option value="Completed" ${r.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                      </select>
+                    </td>
+                    <td style="padding: 0.75rem 1rem;">${evLink}</td>
+                    <td style="padding: 0.75rem 1rem;">
+                      <button class="btn btn-xs btn-outline draft-card-from-request-btn" data-request-id="${r.id}">Draft Card</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+              ${requests.length === 0 ? '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">No content requests found.</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // Dropdown change status handler
+    contentArea.querySelectorAll('.live-request-status-select').forEach(select => {
+      select.addEventListener('change', async () => {
+        const reqId = select.getAttribute('data-request-id');
+        const newStatus = select.value;
+        await updateContentRequestStatus(reqId, { status: newStatus });
+        alert(`Request status updated to "${newStatus}"`);
+      });
+    });
+
+    // Draft Card button handler
+    contentArea.querySelectorAll('.draft-card-from-request-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const reqId = btn.getAttribute('data-request-id');
+        const r = state.contentRequests.find(req => req.id === reqId);
+        if (r) {
+          openNewIdeaModal(clientsFilter, {
+            title: r.title,
+            client: r.clientId,
+            campaignId: r.campaignId,
+            description: r.description || '',
+            sourceRequestId: r.id
+          });
+        }
+      });
+    });
+
+  } else if (activeContentSubTab === 'Media') {
+    headerActions.innerHTML = `<button class="btn btn-primary" id="addMediaBtn">+ Add Archive Link</button>`;
+    const addMediaBtn = document.getElementById('addMediaBtn');
+    if (addMediaBtn) {
+      addMediaBtn.addEventListener('click', () => {
+        openNewMediaModal();
+      });
+    }
+
+    const mediaItems = state.currentUserRole === 'admin' 
+      ? state.mediaLibrary 
+      : (state.mediaLibrary || []).filter(m => m.clientId === state.selectedClientId);
+
+    contentArea.innerHTML = `
+      <div class="card">
+        <div class="table-container">
+          <table class="clean-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Subject</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Media Type</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Linked Campaign</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Usage Rights</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Archive Link</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${mediaItems.map(m => {
+                const camp = state.campaigns.find(c => c.id === m.campaignId);
+                const isUrl = (m.archiveLink || '').startsWith('http');
+                const linkHtml = isUrl 
+                  ? `<a href="${m.archiveLink}" target="_blank" class="btn btn-xs btn-outline">Open Link ↗</a>` 
+                  : `<span class="badge" style="background-color: #f1f5f9; color: #475569; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;">📂 ${m.archiveLink || 'Local'}</span>`;
+                
+                return `
+                  <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 0.75rem 1rem; font-weight: 600;">
+                      ${m.subject}
+                      ${m.sourceFrom ? `<div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400; margin-top: 2px;">Source: ${m.sourceFrom}</div>` : ''}
+                    </td>
+                    <td style="padding: 0.75rem 1rem;">${m.mediaType || 'Photos'}</td>
+                    <td style="padding: 0.75rem 1rem;">${camp ? camp.name : '<span style="color: var(--text-muted);">General</span>'}</td>
+                    <td style="padding: 0.75rem 1rem; font-size: 0.8rem; color: #475569;">${m.usageRights || '<span style="color: var(--text-muted);">No restrictions listed</span>'}</td>
+                    <td style="padding: 0.75rem 1rem;">${linkHtml}</td>
+                  </tr>
+                `;
+              }).join('')}
+              ${mediaItems.length === 0 ? '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">No media library assets found.</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+  } else if (activeContentSubTab === 'Calendar') {
+    headerActions.innerHTML = '';
+
+    const awarenessDays = state.awarenessDays || [];
+
+    contentArea.innerHTML = `
+      <div class="card">
+        <div class="table-container">
+          <table class="clean-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Occasion</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Date</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Linked Campaign</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Type</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Status</th>
+                <th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${awarenessDays.map(aw => {
+                const camp = state.campaigns.find(c => c.id === aw.campaignId);
+                const campName = camp ? camp.name : (aw.drivingCampaign || '<span style="color: var(--text-muted);">General</span>');
+                return `
+                  <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 0.75rem 1rem; font-weight: 600;">
+                      ${aw.occasion}
+                      ${aw.createPostAction ? `<div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400; margin-top: 2px; white-space: pre-wrap;">💡 Action: ${aw.createPostAction}</div>` : ''}
+                    </td>
+                    <td style="padding: 0.75rem 1rem;">${aw.date || 'TBD'}</td>
+                    <td style="padding: 0.75rem 1rem;">${campName}</td>
+                    <td style="padding: 0.75rem 1rem;">${aw.contentType || 'Post'}</td>
+                    <td style="padding: 0.75rem 1rem;">
+                      <span class="approval-tag ${aw.status.toLowerCase()}">${aw.status}</span>
+                    </td>
+                    <td style="padding: 0.75rem 1rem;">
+                      <button class="btn btn-xs btn-outline create-post-from-calendar-btn" data-aw-id="${aw.id}">Create Post</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+              ${awarenessDays.length === 0 ? '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No awareness calendar days found.</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // Create post click handler
+    contentArea.querySelectorAll('.create-post-from-calendar-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const awId = btn.getAttribute('data-aw-id');
+        const aw = state.awarenessDays.find(a => a.id === awId);
+        if (aw) {
+          openNewIdeaModal(clientsFilter, {
+            title: `Post Commemorating: ${aw.occasion}`,
+            client: aw.clientId || state.selectedClientId,
+            campaignId: aw.campaignId || null,
+            description: aw.createPostAction || ''
+          });
+        }
+      });
+    });
+  }
 }
 
-// 6. Buffer Composer & Preview Modal
-function openBufferComposerModal(item) {
+function getColorForPillar(pillar) {
+  const p = (pillar || '').toLowerCase();
+  if (p.includes('awareness')) return 'background-color: hsl(210, 100%, 96%); color: hsl(210, 100%, 40%); border: 1px solid hsl(210, 100%, 90%);';
+  if (p.includes('education')) return 'background-color: hsl(280, 100%, 97%); color: hsl(280, 70%, 45%); border: 1px solid hsl(280, 100%, 92%);';
+  if (p.includes('action')) return 'background-color: hsl(10, 100%, 96%); color: hsl(10, 80%, 45%); border: 1px solid hsl(10, 100%, 90%);';
+  return 'background-color: hsl(140, 100%, 96%); color: hsl(140, 100%, 30%); border: 1px solid hsl(140, 100%, 90%);';
+}
+
+function openBufferComposerModal(item, container) {
   const modal = document.getElementById('globalModalContainer');
   const ngo = state.clients.find(cl => cl.id === item.client) || { name: 'Client NGO', logo: '🌱', primaryContact: 'Bobby Peek' };
   
-  let activePreviewPlatform = item.platform;
+  let activePreviewPlatform = item.platform || 'LinkedIn';
   if (!['LinkedIn', 'Facebook', 'Instagram'].includes(activePreviewPlatform)) {
     activePreviewPlatform = 'LinkedIn';
   }
-
-  let initialText = getSocialDraftText(item, ngo);
 
   const renderModalContent = () => {
     modal.innerHTML = `
@@ -1697,18 +1958,56 @@ function openBufferComposerModal(item) {
             <div class="composer-split-grid">
               
               <!-- Editor Side -->
-              <div class="composer-editor-side">
+              <div class="composer-editor-side" style="display: flex; flex-direction: column; gap: 0.75rem;">
                 <div class="form-group">
-                  <label>Edit Post Draft</label>
-                  <textarea id="composerTextarea" class="composer-input-textarea" placeholder="Type social copy here...">${initialText}</textarea>
+                  <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Title / Idea Name</label>
+                  <input type="text" id="composerTitle" value="${item.title || ''}" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-weight: 600;" required />
                 </div>
-                <div class="composer-meta-details">
+                
+                <div class="form-group">
+                  <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Target Channel Platform</label>
+                  <select id="composerPlatform" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                    <option value="LinkedIn" ${item.platform === 'LinkedIn' ? 'selected' : ''}>LinkedIn</option>
+                    <option value="Facebook" ${item.platform === 'Facebook' ? 'selected' : ''}>Facebook</option>
+                    <option value="Instagram" ${item.platform === 'Instagram' ? 'selected' : ''}>Instagram</option>
+                    <option value="WhatsApp" ${item.platform === 'WhatsApp' ? 'selected' : ''}>WhatsApp</option>
+                    <option value="Email Newsletter" ${item.platform === 'Email Newsletter' ? 'selected' : ''}>Email Newsletter</option>
+                    <option value="Website" ${item.platform === 'Website' ? 'selected' : ''}>Website</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Content Pillar</label>
+                  <select id="composerPillar" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                    <option value="Phase 1: Awareness" ${item.contentPillar === 'Phase 1: Awareness' ? 'selected' : ''}>Phase 1: Awareness</option>
+                    <option value="Phase 2: Education" ${item.contentPillar === 'Phase 2: Education' ? 'selected' : ''}>Phase 2: Education</option>
+                    <option value="Phase 3: Action" ${item.contentPillar === 'Phase 3: Action' ? 'selected' : ''}>Phase 3: Action</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Edit Post Caption Draft</label>
+                  <textarea id="composerTextarea" class="composer-input-textarea" style="width: 100%; height: 160px; font-family: inherit; font-size: 0.88rem; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; outline: none; resize: vertical;" placeholder="Type social copy here...">${item.content || ''}</textarea>
+                </div>
+
+                ${state.currentUserRole === 'admin' ? `
+                  <div class="form-group">
+                    <label style="font-weight: 600; color: var(--primary-color); display: block; margin-bottom: 0.25rem;">📝 Internal Notes (Admin-only)</label>
+                    <textarea id="composerInternalNotes" rows="2" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit; font-size: 0.8rem;" placeholder="Admin internal coordination notes...">${item.internalNotes || ''}</textarea>
+                  </div>
+                ` : ''}
+
+                <div class="form-group">
+                  <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">💬 Client Notes & Feedback</label>
+                  <textarea id="composerClientNotes" rows="2" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit; font-size: 0.8rem;" placeholder="Client feedback notes...">${item.clientNotes || ''}</textarea>
+                </div>
+
+                <div class="composer-meta-details" style="font-size: 0.78rem; background: #f8fafc; padding: 0.50rem; border-radius: 6px;">
                   <div class="detail-row"><span>NGO Client:</span> <strong>${ngo.name}</strong></div>
-                  <div class="detail-row"><span>Campaign Scope:</span> <strong>${item.campaign}</strong></div>
-                  <div class="detail-row"><span>Target Channel:</span> <span class="platform-badge">${item.platform}</span></div>
+                  <div class="detail-row"><span>Campaign Scope:</span> <strong>${item.campaign || 'General'}</strong></div>
                 </div>
               </div>
-
+              
               <!-- Live Preview Device -->
               <div class="composer-preview-side">
                 <div class="preview-platform-tabs">
@@ -1724,8 +2023,9 @@ function openBufferComposerModal(item) {
 
             </div>
 
-            <div class="modal-footer mt-6">
+            <div class="modal-footer mt-6" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
               <button class="btn btn-outline" id="copyComposerTextBtn">Copy Text</button>
+              <button class="btn btn-outline" id="saveComposerBtn">Save Changes</button>
               <button class="btn btn-primary" id="approveComposerScheduleBtn">Approve & Queue Post</button>
             </div>
           </div>
@@ -1745,7 +2045,7 @@ function openBufferComposerModal(item) {
               <span class="mock-avatar">${ngo.logo}</span>
               <div class="mock-header-info">
                 <strong>${ngo.name}</strong>
-                <span>${ngo.primaryContact} • 1st</span>
+                <span>${ngo.primaryContact || 'Project Representative'} • 1st</span>
                 <span>Just now • 🌐</span>
               </div>
             </div>
@@ -1816,6 +2116,22 @@ function openBufferComposerModal(item) {
 
     document.getElementById('composerTextarea').addEventListener('input', updateMockup);
 
+    // Sync platform select changing live preview
+    document.getElementById('composerPlatform').addEventListener('change', (e) => {
+      activePreviewPlatform = e.target.value;
+      if (!['LinkedIn', 'Facebook', 'Instagram'].includes(activePreviewPlatform)) {
+        activePreviewPlatform = 'LinkedIn';
+      }
+      modal.querySelectorAll('.preview-tab-btn').forEach(btn => {
+        if (btn.getAttribute('data-pref') === activePreviewPlatform) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      updateMockup();
+    });
+
     modal.querySelectorAll('.preview-tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         activePreviewPlatform = btn.getAttribute('data-pref');
@@ -1831,24 +2147,66 @@ function openBufferComposerModal(item) {
       alert('Post draft copy copied to clipboard!');
     });
 
-    document.getElementById('approveComposerScheduleBtn').addEventListener('click', () => {
-      const text = document.getElementById('composerTextarea').value;
-      item.title = text.split('\n')[0].substring(0, 30) + '...';
-      
-      updateContentStatus(item.id, 'Scheduled');
-      approveContentCard(item.id);
-      
-      alert('Draft approved! Moved to Buffer Queue schedule.');
+    document.getElementById('saveComposerBtn').addEventListener('click', async () => {
+      const title = document.getElementById('composerTitle').value;
+      const platform = document.getElementById('composerPlatform').value;
+      const contentPillar = document.getElementById('composerPillar').value;
+      const content = document.getElementById('composerTextarea').value;
+      const clientNotes = document.getElementById('composerClientNotes').value;
+
+      const updates = {
+        title,
+        platform,
+        contentPillar,
+        content,
+        clientNotes
+      };
+
+      const internalNotesEl = document.getElementById('composerInternalNotes');
+      if (internalNotesEl) {
+        updates.internalNotes = internalNotesEl.value;
+      }
+
+      await updateContentDetails(item.id, updates);
+      alert('Changes saved successfully!');
       modal.style.display = 'none';
+      renderContentModule(container);
+    });
+
+    document.getElementById('approveComposerScheduleBtn').addEventListener('click', async () => {
+      const title = document.getElementById('composerTitle').value;
+      const platform = document.getElementById('composerPlatform').value;
+      const contentPillar = document.getElementById('composerPillar').value;
+      const content = document.getElementById('composerTextarea').value;
+      const clientNotes = document.getElementById('composerClientNotes').value;
+
+      const updates = {
+        title,
+        platform,
+        contentPillar,
+        content,
+        clientNotes,
+        approvalStatus: 'Scheduled'
+      };
+
+      const internalNotesEl = document.getElementById('composerInternalNotes');
+      if (internalNotesEl) {
+        updates.internalNotes = internalNotesEl.value;
+      }
+
+      await updateContentDetails(item.id, updates);
+      await updateContentStatus(item.id, 'Scheduled');
       
-      const viewContainer = document.getElementById('mainViewContainer');
-      renderContentModule(viewContainer);
+      alert('Draft approved! Saved and moved to Buffer Queue schedule.');
+      modal.style.display = 'none';
+      renderContentModule(container);
     });
   };
 
   renderModalContent();
   modal.style.display = 'flex';
 }
+
 
 function getSocialDraftText(item, ngo) {
   if (item.title.includes('Highlight:')) {
@@ -5315,8 +5673,17 @@ Funder Target: ${report.donor}
 }
 
 // 4. Create Content Idea Modal
-function openNewIdeaModal(clientsList) {
+function openNewIdeaModal(clientsList, prefill = null) {
   const modal = document.getElementById('globalModalContainer');
+  const campaignsList = state.campaigns || [];
+  
+  // Calculate prefilled values if any
+  const prefillTitle = prefill ? (prefill.title || '') : '';
+  const prefillClient = prefill ? (prefill.client || state.selectedClientId || '') : (state.selectedClientId || '');
+  const prefillCampaignId = prefill ? (prefill.campaignId || '') : '';
+  const prefillDescription = prefill ? (prefill.description || '') : '';
+  const prefillSourceRequestId = prefill ? (prefill.sourceRequestId || '') : '';
+
   modal.innerHTML = `
     <div class="modal-dialog">
       <div class="modal-content">
@@ -5328,17 +5695,20 @@ function openNewIdeaModal(clientsList) {
           <form id="newIdeaForm" class="modal-form-fields">
             <div class="form-group">
               <label for="ideaTitle">Title</label>
-              <input type="text" id="ideaTitle" placeholder="e.g. World Environment Day Outreach" required />
+              <input type="text" id="ideaTitle" placeholder="e.g. World Environment Day Outreach" value="${prefillTitle}" required />
             </div>
             <div class="form-group">
               <label for="ideaClient">NGO Client</label>
               <select id="ideaClient">
-                ${clientsList.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                ${clientsList.map(c => `<option value="${c.id}" ${c.id === prefillClient ? 'selected' : ''}>${c.name}</option>`).join('')}
               </select>
             </div>
             <div class="form-group">
               <label for="ideaCampaign">Campaign</label>
-              <input type="text" id="ideaCampaign" placeholder="e.g. Clean Air Fund" required />
+              <select id="ideaCampaign">
+                <option value="">None / General</option>
+                ${campaignsList.map(c => `<option value="${c.id}" ${c.id === prefillCampaignId ? 'selected' : ''}>${c.name}</option>`).join('')}
+              </select>
             </div>
             <div class="form-group">
               <label for="ideaPlatform">Platform</label>
@@ -5351,7 +5721,20 @@ function openNewIdeaModal(clientsList) {
                 <option value="Website">Website</option>
               </select>
             </div>
+            <div class="form-group">
+              <label for="ideaPillar">Content Pillar</label>
+              <select id="ideaPillar">
+                <option value="Phase 1: Awareness">Phase 1: Awareness</option>
+                <option value="Phase 2: Education">Phase 2: Education</option>
+                <option value="Phase 3: Action">Phase 3: Action</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="ideaContent">Content Caption / Prompt Guideline</label>
+              <textarea id="ideaContent" rows="4" style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit;" placeholder="Enter post caption or guideline draft...">${prefillDescription}</textarea>
+            </div>
             
+            <input type="hidden" id="ideaSourceRequestId" value="${prefillSourceRequestId}" />
             <button type="submit" class="btn btn-primary mt-4 w-full">Create Card</button>
           </form>
         </div>
@@ -5368,21 +5751,211 @@ function openNewIdeaModal(clientsList) {
     e.preventDefault();
     const title = document.getElementById('ideaTitle').value;
     const client = document.getElementById('ideaClient').value;
-    const campaign = document.getElementById('ideaCampaign').value;
+    const campaignId = document.getElementById('ideaCampaign').value;
     const platform = document.getElementById('ideaPlatform').value;
+    const contentPillar = document.getElementById('ideaPillar').value;
+    const content = document.getElementById('ideaContent').value;
+    const sourceRequestId = document.getElementById('ideaSourceRequestId').value || null;
 
     addContentCard({
       title,
       client,
-      campaign,
+      campaignId: campaignId || null,
       platform,
+      contentPillar,
+      content,
       status: 'Ideas',
-      author: 'Owner Manual'
+      agentId: 'manual',
+      sourceRequestId: sourceRequestId || null
     });
 
     modal.style.display = 'none';
   });
 }
+
+function openNewRequestModal() {
+  const modal = document.getElementById('globalModalContainer');
+  const campaignsList = state.campaigns || [];
+  const evidenceList = state.evidence || [];
+  
+  modal.innerHTML = `
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>📥 Request Content</h2>
+          <button class="close-modal-btn" id="closeGlobalModal">×</button>
+        </div>
+        <div class="modal-body">
+          <form id="newRequestForm" class="modal-form-fields" style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <div class="form-group">
+              <label for="reqTitle" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Title / Topic</label>
+              <input type="text" id="reqTitle" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" placeholder="e.g. World Water Day graphic request" required />
+            </div>
+            <div class="form-group">
+              <label for="reqCampaign" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Linked Campaign</label>
+              <select id="reqCampaign" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                <option value="">None / General</option>
+                ${campaignsList.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="reqEvidence" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Source Evidence Document</label>
+              <select id="reqEvidence" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                <option value="">No document attached</option>
+                ${evidenceList.map(e => `<option value="${e.id}">${e.originalName || e.name}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="reqDescription" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Description / Brief Details</label>
+              <textarea id="reqDescription" rows="3" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit;" placeholder="Describe the post requirements..."></textarea>
+            </div>
+            <div class="form-group">
+              <label for="reqAssignee" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Assignee</label>
+              <input type="text" id="reqAssignee" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" placeholder="e.g. Kim or Ivana" />
+            </div>
+            <div class="form-group">
+              <label for="reqDueDate" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Due Date</label>
+              <input type="text" id="reqDueDate" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" placeholder="e.g. Week of 9/02/2026 or 2026-03-20" />
+            </div>
+            <div class="form-group">
+              <label for="reqRequestedBy" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Requested By</label>
+              <input type="text" id="reqRequestedBy" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" placeholder="e.g. Bobby Peek" value="${state.currentUserRole === 'admin' ? 'Irene K.' : 'Bobby Peek'}" />
+            </div>
+            <div class="form-group">
+              <label for="reqSourceMaterial" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Source Material Notes</label>
+              <input type="text" id="reqSourceMaterial" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" placeholder="e.g. Google Docs links or handbook reference" />
+            </div>
+            
+            <button type="submit" class="btn btn-primary mt-4 w-full">Submit Content Request</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+
+  document.getElementById('closeGlobalModal').addEventListener('click', () => {
+    modal.style.display = 'none';
+  });
+
+  document.getElementById('newRequestForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const title = document.getElementById('reqTitle').value;
+    const campaignId = document.getElementById('reqCampaign').value;
+    const sourceEvidenceId = document.getElementById('reqEvidence').value;
+    const description = document.getElementById('reqDescription').value;
+    const assignee = document.getElementById('reqAssignee').value;
+    const dueDate = document.getElementById('reqDueDate').value;
+    const requestedBy = document.getElementById('reqRequestedBy').value;
+    const sourceMaterial = document.getElementById('reqSourceMaterial').value;
+
+    addContentRequest({
+      title,
+      campaignId: campaignId || null,
+      sourceEvidenceId: sourceEvidenceId || null,
+      description,
+      assignee,
+      dueDate,
+      requestedBy,
+      sourceMaterial,
+      status: 'Awaiting Instruction'
+    });
+
+    modal.style.display = 'none';
+  });
+}
+
+function openNewMediaModal() {
+  const modal = document.getElementById('globalModalContainer');
+  const campaignsList = state.campaigns || [];
+  const evidenceList = state.evidence || [];
+
+  modal.innerHTML = `
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>🖼️ Add Media Archive Link</h2>
+          <button class="close-modal-btn" id="closeGlobalModal">×</button>
+        </div>
+        <div class="modal-body">
+          <form id="newMediaForm" class="modal-form-fields" style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <div class="form-group">
+              <label for="medSubject" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Subject / Event Name</label>
+              <input type="text" id="medSubject" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" placeholder="e.g. Vaal Air Quality Workshop Photos" required />
+            </div>
+            <div class="form-group">
+              <label for="medCampaign" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Linked Campaign</label>
+              <select id="medCampaign" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                <option value="">None / General</option>
+                ${campaignsList.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="medEvidence" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Linked Evidence File</label>
+              <select id="medEvidence" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                <option value="">No file linked</option>
+                ${evidenceList.map(e => `<option value="${e.id}">${e.originalName || e.name}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="medLink" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Archive Link (URL or Folder name)</label>
+              <input type="text" id="medLink" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" placeholder="e.g. https://google-drive.com/folder-xyz" required />
+            </div>
+            <div class="form-group">
+              <label for="medType" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Media Type</label>
+              <select id="medType" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                <option value="Photos">Photos</option>
+                <option value="Video and Photos">Video and Photos</option>
+                <option value="Videos">Videos</option>
+                <option value="Graphics">Graphics</option>
+                <option value="Audio">Audio</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="medSource" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Source From (Photographer/Staff)</label>
+              <input type="text" id="medSource" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" placeholder="e.g. Tsepang" />
+            </div>
+            <div class="form-group">
+              <label for="medUsage" style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Usage Rights / Permission Notes</label>
+              <textarea id="medUsage" rows="2" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit;" placeholder="e.g. Consent forms signed. Free for social media."></textarea>
+            </div>
+            
+            <button type="submit" class="btn btn-primary mt-4 w-full">Save Media Link</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+
+  document.getElementById('closeGlobalModal').addEventListener('click', () => {
+    modal.style.display = 'none';
+  });
+
+  document.getElementById('newMediaForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const subject = document.getElementById('medSubject').value;
+    const campaignId = document.getElementById('medCampaign').value;
+    const evidenceId = document.getElementById('medEvidence').value;
+    const archiveLink = document.getElementById('medLink').value;
+    const mediaType = document.getElementById('medType').value;
+    const sourceFrom = document.getElementById('medSource').value;
+    const usageRights = document.getElementById('medUsage').value;
+
+    addMediaAsset({
+      subject,
+      campaignId: campaignId || null,
+      evidenceId: evidenceId || null,
+      archiveLink,
+      mediaType,
+      sourceFrom,
+      usageRights
+    });
+
+    modal.style.display = 'none';
+  });
+}
+
 
 // 5. Add NGO Client Modal
 // 5. Add NGO Client Onboarding Wizard

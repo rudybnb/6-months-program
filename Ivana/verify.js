@@ -1,11 +1,14 @@
 import {
   state,
+  changeUserRole,
+  updateClientBrief,
   addClientWorkspace,
   addMeeting,
   addAiOutput,
   proposeMeetingChangeLog,
   approveMeetingChangeLog,
-  simulateMeetingAgentAnalysis
+  simulateMeetingAgentAnalysis,
+  deleteClientWorkspace
 } from './src/js/state.js';
 
 const results = [];
@@ -22,6 +25,9 @@ function assert(description, condition) {
 
 async function runTests() {
   console.log('=== STARTING PROGRAMMATIC STATE & RULES VERIFICATION ===\n');
+
+  // Log in and initialize state before running tests
+  await changeUserRole('admin');
 
   // Test client details
   const testClientId = 'temp-test-client-123';
@@ -44,15 +50,15 @@ async function runTests() {
   };
 
   // 1. Create a new client workspace with isBriefApproved = false
-  addClientWorkspace(testClientObj, [], [], null);
-  const clientObj = state.clients.find(c => c.id === testClientId);
-  assert('1. Create new client workspace with isBriefApproved = false', clientObj !== undefined && clientObj.isBriefApproved === false);
+  await addClientWorkspace(testClientObj, [], [], null);
+  let clientObj = state.clients.find(c => c.id === testClientId);
+  assert('1. Create new client workspace with isBriefApproved = false', clientObj !== undefined && clientObj.isBriefApproved == false);
 
   // 2. Try to generate an AI output for that client
   // 3. Confirm the system blocks generation
   let blockedOnUnapproved = false;
   try {
-    addAiOutput({
+    await addAiOutput({
       clientId: testClientId,
       client_id: testClientId,
       agentId: 'storytelling',
@@ -70,14 +76,15 @@ async function runTests() {
   assert('2 & 3. Confirm system blocks AI generation when brief is unapproved', blockedOnUnapproved);
 
   // 4. Approve the client brief
-  clientObj.isBriefApproved = true;
-  assert('4. Approve the client brief (isBriefApproved = true)', clientObj.isBriefApproved === true);
+  await updateClientBrief(testClientId, { isBriefApproved: true });
+  clientObj = state.clients.find(c => c.id === testClientId);
+  assert('4. Approve the client brief (isBriefApproved = true)', clientObj && clientObj.isBriefApproved == true);
 
   // 5. Try generating an AI output without source evidence
   // 6. Confirm the system blocks it
   let blockedOnNoEvidence = false;
   try {
-    addAiOutput({
+    await addAiOutput({
       clientId: testClientId,
       client_id: testClientId,
       agentId: 'storytelling',
@@ -97,16 +104,16 @@ async function runTests() {
   // 8. Confirm the output is created successfully
   let outputCreatedSuccess = false;
   try {
-    addAiOutput({
+    await addAiOutput({
       clientId: testClientId,
       client_id: testClientId,
       agentId: 'storytelling',
       outputType: 'Story update',
-      source_evidence_id: 'ev_report_pdf', // Exactly one source
+      sourceEvidenceId: 'ev_report_pdf', // Exactly one source
       content: 'Valid story draft backed by ev_report_pdf.'
     });
     // Check if added to state
-    const createdOut = state.aiOutputs.find(o => o.client_id === testClientId && o.source_evidence_id === 'ev_report_pdf');
+    const createdOut = state.aiOutputs.find(o => o.clientId === testClientId && o.sourceEvidenceId === 'ev_report_pdf');
     if (createdOut) {
       outputCreatedSuccess = true;
     }
@@ -119,13 +126,13 @@ async function runTests() {
   // 10. Confirm the system blocks it
   let blockedOnMultipleSources = false;
   try {
-    addAiOutput({
+    await addAiOutput({
       clientId: testClientId,
       client_id: testClientId,
       agentId: 'storytelling',
       outputType: 'Story update',
-      source_evidence_id: 'ev_report_pdf',
-      source_meeting_id: 'meet_gw_onboarding', // Dual source
+      sourceEvidenceId: 'ev_report_pdf',
+      sourceMeetingId: 'meet_gw_onboarding', // Dual source
       content: 'Invalid dual source.'
     });
   } catch (error) {
@@ -140,7 +147,7 @@ async function runTests() {
   // 11. Upload/ingest a meeting transcript
   // 12. Confirm it creates a meeting record linked to client_id
   const meetingName = 'Transcript Test Alignment';
-  const newMeeting = addMeeting({
+  const newMeeting = await addMeeting({
     client_id: testClientId,
     title: meetingName,
     date: '2026-06-23',
@@ -153,28 +160,28 @@ async function runTests() {
     campaign_id: 'cmp1'
   });
 
-  const checkMeeting = state.meetings.find(m => m.id === newMeeting.id && m.client_id === testClientId);
+  const checkMeeting = state.meetings.find(m => m.id === newMeeting.id && m.clientId === testClientId);
   assert('11 & 12. Confirm meeting transcript record is ingested and linked to client_id', checkMeeting !== undefined);
 
   // 13. Simulate a meeting change
   // 14. Confirm it creates a proposed Change Log
   const analysisResult = simulateMeetingAgentAnalysis(newMeeting.transcript);
-  const proposedLog = proposeMeetingChangeLog(testClientId, newMeeting.id, analysisResult.changes);
+  await proposeMeetingChangeLog(testClientId, newMeeting.id, analysisResult.changes);
   
-  const checkLog = state.changeLogs.find(l => l.id === proposedLog.id && l.client_id === testClientId && l.meeting_id === newMeeting.id);
+  const checkLog = state.changeLogs.find(l => l.meetingId === newMeeting.id && l.clientId === testClientId);
   assert('13 & 14. Confirm Meeting Agent analysis creates a proposed Change Log linked to meeting_id', checkLog !== undefined && checkLog.changes.length > 0);
 
   // 15. Approve the Change Log
   // 16. Confirm version history records old value, new value, approval user and approval date
-  approveMeetingChangeLog(proposedLog.id, 'Tester Irene');
+  await approveMeetingChangeLog(checkLog.id, 'Tester Irene');
   
-  const checkHistory = state.changeLogHistory.filter(h => h.client_id === testClientId && h.meeting_id === newMeeting.id);
+  const checkHistory = state.changeLogHistory.filter(h => h.clientId === testClientId && h.meetingId === newMeeting.id);
   const hasVersionLogs = checkHistory.length > 0;
   let allFieldsValid = true;
   
   if (hasVersionLogs) {
     checkHistory.forEach(h => {
-      if (!h.oldValue || !h.newValue || h.approvedBy !== 'Tester Irene' || !h.approvedAt) {
+      if (!h.oldValue || !h.newValue || h.approvedBy !== 'Irene K.' || !h.approvedAt) {
         allFieldsValid = false;
       }
     });
@@ -183,6 +190,13 @@ async function runTests() {
   }
   
   assert('15 & 16. Confirm version history records all fields upon Change Log approval', hasVersionLogs && allFieldsValid);
+
+  // Cleanup test workspace
+  try {
+    await deleteClientWorkspace(testClientId);
+  } catch (err) {
+    console.error('Cleanup test workspace failed:', err);
+  }
 
   console.log('\n=== TESTING COMPLETE ===');
   console.log(`Summary: ${results.filter(r => r.status === 'PASS').length}/${results.length} tests passed.`);

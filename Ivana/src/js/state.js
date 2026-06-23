@@ -290,6 +290,9 @@ export const state = {
 
   // Content Module Pipeline
   content: [],
+  contentRequests: [],
+  mediaLibrary: [],
+  awarenessDays: [],
 
   // Reports Center
   reports: [
@@ -664,9 +667,11 @@ export function notify() {
   listeners.forEach(fn => fn(state));
 }
 
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? (window.location.port === '5173' ? 'http://localhost:3000' : window.location.origin)
-  : (window.location.hostname === 'ik-communications.onrender.com' ? 'https://ik-communications-api.onrender.com' : window.location.origin);
+const API_BASE = typeof window !== 'undefined'
+  ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? (window.location.port === '5173' ? 'http://localhost:3000' : window.location.origin)
+    : (window.location.hostname === 'ik-communications.onrender.com' ? 'https://ik-communications-api.onrender.com' : window.location.origin))
+  : 'http://localhost:3000';
 
 export async function authFetch(url, options = {}) {
   options.headers = options.headers || {};
@@ -772,13 +777,47 @@ export async function loadClientWorkspaceData(clientId) {
       state.impactMetrics[clientId].fundingSecured = cl.fundingSecured || 0;
     }
 
+    const reqRes = await authFetch(`${API_BASE}/api/clients/${clientId}/content-requests`);
+    if (reqRes.ok) {
+      state.contentRequests = await reqRes.json();
+    }
+
+    const mediaRes = await authFetch(`${API_BASE}/api/clients/${clientId}/media-library`);
+    if (mediaRes.ok) {
+      state.mediaLibrary = await mediaRes.json();
+    }
+
+    const awRes = await authFetch(`${API_BASE}/api/awareness-days`);
+    if (awRes.ok) {
+      state.awarenessDays = await awRes.json();
+    }
+
+    // Map database-backed ai_outputs to state.content for Kanban Board
+    state.content = state.aiOutputs.map(o => {
+      const camp = state.campaigns.find(cmp => cmp.id === o.campaignId);
+      return {
+        id: o.id,
+        client: o.clientId,
+        campaign: camp ? camp.name : (o.outputType || 'Social Campaign'),
+        title: o.title || o.outputType || 'Untitled Post',
+        platform: o.platform || 'LinkedIn',
+        status: o.approvalStatus === 'Draft' ? 'Ideas' : (o.approvalStatus === 'Internal Review' ? 'Review' : (o.approvalStatus === 'Client Approved' ? 'Approval' : o.approvalStatus)),
+        approvalStatus: o.approvalStatus || 'Draft',
+        content: o.content,
+        aiGenerated: o.agentId !== 'manual',
+        contentPillar: o.contentPillar || 'Phase 1: Awareness',
+        internalNotes: o.internalNotes || '',
+        clientNotes: o.clientNotes || '',
+        ...o
+      };
+    });
+
     notify();
   } catch (err) {
     console.error('Failed to load client workspace data from backend:', err);
   }
 }
 
-// Auth Role login wrapper
 export async function changeUserRole(role) {
   state.currentUserRole = role;
 
@@ -822,43 +861,107 @@ export async function selectClient(clientId) {
   notify();
 }
 
-export function addContentCard(card) {
-  // Legacy handler kept for structural compatibility
-  state.content.push({
-    id: 'cnt' + (state.content.length + 1),
-    aiGenerated: false,
-    publishDate: 'None',
-    approvalStatus: 'Draft',
-    ...card
-  });
-  notify();
+export async function addContentCard(card) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/ai-outputs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: card.client || card.clientId || state.selectedClientId,
+        campaignId: card.campaignId || null,
+        agentId: card.agentId || 'manual',
+        outputType: card.outputType || 'Social Post',
+        content: card.content || 'Draft content text.',
+        approvalStatus: card.status || 'Ideas',
+        contentPillar: card.contentPillar || 'Phase 1: Awareness',
+        internalNotes: card.internalNotes || '',
+        clientNotes: card.clientNotes || '',
+        platform: card.platform || 'LinkedIn',
+        title: card.title || 'Untitled Post',
+        sourceRequestId: card.sourceRequestId || null
+      })
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Failed to add content card:', err);
+  }
 }
 
 export async function updateContentStatus(cardId, newStatus) {
-  // Try to update as AI output if matches out ID
-  if (cardId.startsWith('out')) {
-    await updateAiOutputStatus(cardId, newStatus);
-  } else {
-    const card = state.content.find(c => c.id === cardId);
-    if (card) {
-      card.status = newStatus;
-      notify();
+  let dbStatus = newStatus;
+  if (newStatus === 'Ideas') dbStatus = 'Draft';
+  else if (newStatus === 'Review') dbStatus = 'Internal Review';
+  else if (newStatus === 'Approval') dbStatus = 'Client Approved';
+  await updateAiOutputStatus(cardId, dbStatus);
+}
+
+export async function approveContentCard(cardId) {
+  await updateAiOutputStatus(cardId, 'Approved');
+}
+
+export async function updateContentDetails(cardId, updates) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/ai-outputs/${cardId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
     }
+  } catch (err) {
+    console.error('Failed to update content details:', err);
   }
 }
 
-export function approveContentCard(cardId) {
-  const card = state.content.find(c => c.id === cardId);
-  if (card) {
-    card.approvalStatus = 'Approved';
-    notify();
+export async function addContentRequest(req) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${state.selectedClientId}/content-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req)
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Failed to add content request:', err);
   }
 }
 
-export function generateProposalDraft(opportunityId) {
-  const opp = state.fundingOpportunities.find(o => o.id === opportunityId);
-  if (!opp) return '';
+export async function updateContentRequestStatus(id, updates) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/content-requests/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Failed to update content request:', err);
+  }
+}
 
+export async function addMediaAsset(asset) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${state.selectedClientId}/media-library`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(asset)
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Failed to add media asset:', err);
+  }
+}
+
+export function generateProposalDraft(opp) {
   const client = state.clients.find(c => c.id === state.selectedClientId) || state.clients[0];
   if (!client) return 'Please create an NGO Client profile first before generating grant proposals.';
 
@@ -1406,7 +1509,7 @@ export function simulateMeetingAgentAnalysis(meetingText) {
 
   if (text.includes('30 sensors') || text.includes('thirty sensors')) {
     changes.push({
-      field: 'campaignGoal',
+      field: 'goalsAchieve',
       label: 'Campaign Goal',
       oldVal: 'Deploy 15 PM2.5 air sensors in Southern Durban schools',
       newVal: 'Deploy 30 PM2.5 air sensors in schools and clinics',

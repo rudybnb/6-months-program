@@ -526,9 +526,28 @@ app.post('/api/ai-outputs', authenticateToken, async (req, res) => {
       });
     }
 
-    const final_source_evidence_id = output.sourceEvidenceId || output.source_evidence_id || null;
-    const final_source_meeting_id = output.sourceMeetingId || output.source_meeting_id || null;
-    const final_source_manual_entry_id = output.sourceManualEntryId || output.source_manual_entry_id || null;
+    let final_source_evidence_id = output.sourceEvidenceId || output.source_evidence_id || null;
+    let final_source_meeting_id = output.sourceMeetingId || output.source_meeting_id || null;
+    let final_source_manual_entry_id = output.sourceManualEntryId || output.source_manual_entry_id || null;
+
+    // Auto-create manual evidence source if no sources are provided (e.g. for manually created idea cards)
+    const agentId = output.agentId || output.agent_id || 'socialmedia';
+    if (!final_source_evidence_id && !final_source_meeting_id && !final_source_manual_entry_id && agentId === 'manual') {
+      const manualId = 'ev_manual_' + Math.floor(Math.random() * 10000000);
+      await db('evidence').insert({
+        id: manualId,
+        clientId: targetClientId,
+        name: `Manual Entry: ${output.title || 'Untitled Idea'}`,
+        contentType: 'Manual Entry',
+        sourceType: 'Manual Entry',
+        dateUploaded: new Date().toISOString().split('T')[0],
+        verificationStatus: req.user.role === 'admin' ? 'Verified by Admin' : 'Needs Review',
+        textExcerpt: output.content || 'Manually created content idea.',
+        uploadedBy: req.user.id || req.user.name,
+        uploadedAt: new Date().toISOString()
+      });
+      final_source_manual_entry_id = manualId;
+    }
 
     let sourcesCount = 0;
     if (final_source_evidence_id) sourcesCount++;
@@ -551,15 +570,24 @@ app.post('/api/ai-outputs', authenticateToken, async (req, res) => {
       content: output.content || 'Draft content text.',
       confidenceScore: parseInt(output.confidenceScore || output.confidence_score) || 95,
       verificationStatus: output.verificationStatus || 'Verified',
-      approvalStatus: 'Draft',
+      approvalStatus: output.approvalStatus || 'Draft',
       sourceEvidenceId: final_source_evidence_id,
       sourceMeetingId: final_source_meeting_id,
-      sourceManualEntryId: final_source_manual_entry_id
+      sourceManualEntryId: final_source_manual_entry_id,
+      sourceRequestId: output.sourceRequestId || output.source_request_id || null,
+      contentPillar: output.contentPillar || output.content_pillar || null,
+      internalNotes: req.user.role === 'admin' ? (output.internalNotes || output.internal_notes || null) : null,
+      clientNotes: output.clientNotes || output.client_notes || null,
+      platform: output.platform || null,
+      title: output.title || null
     };
 
     await db('ai_outputs').insert(newOut);
     await logAudit(req.user.id, 'CONTENT_DRAFT_GEN', targetClientId, outputId, `AI Agent compiled new draft of type "${newOut.outputType}".`, req);
 
+    if (req.user.role !== 'admin') {
+      delete newOut.internalNotes;
+    }
     res.status(201).json(newOut);
   } catch (err) {
     if (err.message.includes('chk_single_source')) {
@@ -733,7 +761,12 @@ app.get('/api/clients/:id/change-log-history', authenticateToken, checkClientAcc
 app.get('/api/clients/:id/evidence', authenticateToken, checkClientAccess, async (req, res) => {
   try {
     const data = await db('evidence').where({ clientId: req.params.id }).orderBy('uploadedAt', 'desc');
-    res.json(data);
+    const mapped = data.map(e => ({
+      ...e,
+      createdBy: e.uploadedBy,
+      createdAt: e.uploadedAt || e.created_at || e.dateUploaded
+    }));
+    res.json(mapped);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -748,9 +781,17 @@ app.get('/api/clients/:id/meetings-list', authenticateToken, checkClientAccess, 
   }
 });
 
+
+
 app.get('/api/clients/:id/ai-outputs', authenticateToken, checkClientAccess, async (req, res) => {
   try {
-    const data = await db('ai_outputs').where({ clientId: req.params.id }).orderBy('createdAt', 'desc');
+    const data = await db('ai_outputs').where({ clientId: req.params.id }).orderBy('created_at', 'desc');
+    if (req.user.role !== 'admin') {
+      data.forEach(o => {
+        delete o.internalNotes;
+        delete o.internal_notes;
+      });
+    }
     res.json(data);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -768,7 +809,7 @@ app.get('/api/clients/:id/reports', authenticateToken, checkClientAccess, async 
 
 app.get('/api/clients/:id/campaigns', authenticateToken, checkClientAccess, async (req, res) => {
   try {
-    const data = await db('campaigns').where({ clientId: req.params.id }).orderBy('createdAt', 'desc');
+    const data = await db('campaigns').where({ clientId: req.params.id }).orderBy('created_at', 'desc');
     res.json(data);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -814,6 +855,170 @@ app.get('/api/clients/:id/audit-logs', authenticateToken, checkClientAccess, asy
   }
 });
 
+// ----------------------------------------------------
+// OPERATIONAL TRACKER ENDPOINTS
+// ----------------------------------------------------
+
+// Content Requests
+app.get('/api/clients/:id/content-requests', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('content_requests').where({ clientId: req.params.id }).orderBy('createdAt', 'desc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/clients/:id/content-requests', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const { title, contentFor, description, assignee, dueDate, status, sourceMaterial, requestedBy, campaignId, sourceEvidenceId } = req.body;
+    const reqId = 'req_' + Math.floor(Math.random() * 10000000);
+    const newReq = {
+      id: reqId,
+      clientId: req.params.id,
+      campaignId: campaignId || null,
+      sourceEvidenceId: sourceEvidenceId || null,
+      title: title || 'Untitled Request',
+      contentFor: contentFor || '',
+      description: description || '',
+      assignee: assignee || '',
+      dueDate: dueDate || '',
+      status: status || 'Awaiting Instruction',
+      sourceMaterial: sourceMaterial || '',
+      requestedBy: requestedBy || req.user.name || 'Admin'
+    };
+    await db('content_requests').insert(newReq);
+    await logAudit(req.user.id, 'CONTENT_REQUEST_CREATE', req.params.id, reqId, `Created content request "${newReq.title}".`, req);
+    res.status(201).json(newReq);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/content-requests/:id', authenticateToken, async (req, res) => {
+  try {
+    const { status, assignee, title, contentFor, description, dueDate, sourceMaterial, requestedBy, campaignId, sourceEvidenceId } = req.body;
+    const item = await db('content_requests').where({ id: req.params.id }).first();
+    if (!item) {
+      return res.status(404).json({ message: 'Request not found.' });
+    }
+    const updates = {};
+    if (status !== undefined) updates.status = status;
+    if (assignee !== undefined) updates.assignee = assignee;
+    if (title !== undefined) updates.title = title;
+    if (contentFor !== undefined) updates.contentFor = contentFor;
+    if (description !== undefined) updates.description = description;
+    if (dueDate !== undefined) updates.dueDate = dueDate;
+    if (sourceMaterial !== undefined) updates.sourceMaterial = sourceMaterial;
+    if (requestedBy !== undefined) updates.requestedBy = requestedBy;
+    if (campaignId !== undefined) updates.campaignId = campaignId;
+    if (sourceEvidenceId !== undefined) updates.sourceEvidenceId = sourceEvidenceId;
+
+    await db('content_requests').where({ id: req.params.id }).update(updates);
+    await logAudit(req.user.id, 'CONTENT_REQUEST_UPDATE', item.clientId, item.id, `Updated content request details.`, req);
+    res.json({ message: 'Content request updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Media Library
+app.get('/api/clients/:id/media-library', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('media_library').where({ clientId: req.params.id }).orderBy('createdAt', 'desc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/clients/:id/media-library', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const { subject, mediaType, archiveLink, sourceFrom, campaignId, evidenceId, usageRights } = req.body;
+    const mediaId = 'med_' + Math.floor(Math.random() * 10000000);
+    const newMedia = {
+      id: mediaId,
+      clientId: req.params.id,
+      campaignId: campaignId || null,
+      evidenceId: evidenceId || null,
+      subject: subject || 'Untitled Media Link',
+      mediaType: mediaType || 'Photos',
+      archiveLink: archiveLink || '',
+      sourceFrom: sourceFrom || '',
+      usageRights: usageRights || ''
+    };
+    await db('media_library').insert(newMedia);
+    await logAudit(req.user.id, 'MEDIA_ASSET_ADD', req.params.id, mediaId, `Added media asset link for "${newMedia.subject}".`, req);
+    res.status(201).json(newMedia);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Awareness Days Calendar
+app.get('/api/awareness-days', authenticateToken, async (req, res) => {
+  try {
+    const data = await db('awareness_days').orderBy('id', 'asc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/awareness-days', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { occasion, date, contentType, drivingCampaign, numberOfPosts, possiblePhotos, status, globalOrClientSpecific, clientId, campaignId, createPostAction } = req.body;
+    const dayId = 'aw_' + Math.floor(Math.random() * 10000000);
+    const newDay = {
+      id: dayId,
+      occasion,
+      date,
+      contentType,
+      drivingCampaign,
+      numberOfPosts,
+      possiblePhotos,
+      status: status || 'Draft',
+      globalOrClientSpecific: globalOrClientSpecific || 'global',
+      clientId: clientId || null,
+      campaignId: campaignId || null,
+      createPostAction: createPostAction || ''
+    };
+    await db('awareness_days').insert(newDay);
+    res.status(201).json(newDay);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Edit/Save AI Output Details (Full update)
+app.put('/api/ai-outputs/:id', authenticateToken, async (req, res) => {
+  try {
+    const { title, platform, contentPillar, content, internalNotes, clientNotes, approvalStatus, sourceRequestId } = req.body;
+    const out = await db('ai_outputs').where({ id: req.params.id }).first();
+    if (!out) {
+      return res.status(404).json({ message: 'AI Output not found.' });
+    }
+
+    const updates = {};
+    if (title !== undefined) updates.title = title;
+    if (platform !== undefined) updates.platform = platform;
+    if (contentPillar !== undefined) updates.contentPillar = contentPillar;
+    if (content !== undefined) updates.content = content;
+    if (internalNotes !== undefined && req.user.role === 'admin') updates.internalNotes = internalNotes;
+    if (clientNotes !== undefined) updates.clientNotes = clientNotes;
+    if (approvalStatus !== undefined) updates.approvalStatus = approvalStatus;
+    if (sourceRequestId !== undefined) updates.sourceRequestId = sourceRequestId;
+
+    updates.updated_at = new Date().toISOString();
+
+    await db('ai_outputs').where({ id: req.params.id }).update(updates);
+    await logAudit(req.user.id, 'CONTENT_DRAFT_UPDATE', out.clientId, out.id, `Saved edits for draft "${title || out.title || out.id}".`, req);
+    res.json({ message: 'AI Output updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Serve SPA frontend index.html fallback for client-side routing
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) {
@@ -827,8 +1032,6 @@ app.get('*', (req, res, next) => {
   }
 });
 
-// ----------------------------------------------------
-// SERVER LAUNCH
 // ----------------------------------------------------
 
 app.listen(PORT, async () => {
