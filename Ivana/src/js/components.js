@@ -226,14 +226,14 @@ export function renderAdminDashboard(container) {
                     </div>
                   </td>
                   <td>
-                    <span class="status-badge ${c.status}">
-                      <span class="dot"></span> ${c.statusText}
+                    <span class="status-badge ${c.databaseBacked ? (c.isBriefApproved ? 'green' : 'yellow') : 'disabled'}">
+                      <span class="dot"></span> ${c.databaseBacked ? (c.isBriefApproved ? 'Healthy' : 'Pending Onboarding') : 'Frontend Demo Placeholder'}
                     </span>
                   </td>
                   <td>${c.activeProjectsCount}</td>
                   <td>${c.reportsDueCount}</td>
                   <td><strong>£${c.monthlyFee.toLocaleString()}</strong></td>
-                  <td><span class="deadline-txt ${c.status === 'red' ? 'danger' : ''}">${c.nextDeadline}</span></td>
+                  <td><span class="deadline-txt ${c.databaseBacked && c.status === 'red' ? 'danger' : ''}">${c.nextDeadline || 'None'}</span></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -836,8 +836,8 @@ function renderClientProfile(container, clientId) {
         <div>
           <div class="profile-title-badges">
             <h1>${client.name}</h1>
-            <span class="status-badge ${client.status}">
-              <span class="dot"></span> ${client.statusText}
+            <span class="status-badge ${client.databaseBacked ? (client.isBriefApproved ? 'green' : 'yellow') : 'disabled'}">
+              <span class="dot"></span> ${client.databaseBacked ? (client.isBriefApproved ? 'Healthy' : 'Pending Onboarding') : 'Frontend Demo Placeholder'}
             </span>
           </div>
           <p class="subtitle">${client.sector} • 📍 ${client.country}</p>

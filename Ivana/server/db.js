@@ -455,33 +455,34 @@ export async function initDb() {
 
 async function seedInitialData() {
   // 1. Seed users individually first to ensure foreign keys can resolve
-  const adminExists = await db('users').where({ id: 'usr-admin' }).first();
-  if (!adminExists) {
-    console.log('Seeding usr-admin user...');
-    const adminSalt = await bcrypt.genSalt(10);
-    const adminHash = await bcrypt.hash('admin123', adminSalt);
-    await db('users').insert({
-      id: 'usr-admin',
-      name: 'Irene K.',
-      email: 'admin@ikcomms.org',
-      passwordHash: adminHash,
-      role: 'admin'
-    });
-  }
+  const adminSalt = await bcrypt.genSalt(10);
+  const adminHash = await bcrypt.hash('admin123', adminSalt);
+  const bobbySalt = await bcrypt.genSalt(10);
+  const bobbyHash = await bcrypt.hash('bobby123', bobbySalt);
 
-  const bobbyExists = await db('users').where({ id: 'usr-bobby' }).first();
-  if (!bobbyExists) {
-    console.log('Seeding usr-bobby user...');
-    const bobbySalt = await bcrypt.genSalt(10);
-    const bobbyHash = await bcrypt.hash('bobby123', bobbySalt);
-    await db('users').insert({
-      id: 'usr-bobby',
-      name: 'Bobby Peek',
-      email: 'bobby@groundwork.org.za',
-      passwordHash: bobbyHash,
-      role: 'client'
-    });
-  }
+  // Clear any existing users with same IDs or emails to ensure correct credentials
+  await db('users').where({ id: 'usr-admin' }).del();
+  await db('users').where({ email: 'admin@ikcomms.org' }).del();
+  console.log('Seeding usr-admin user...');
+  await db('users').insert({
+    id: 'usr-admin',
+    name: 'Irene K.',
+    email: 'admin@ikcomms.org',
+    passwordHash: adminHash,
+    role: 'admin'
+  });
+
+  await db('users').where({ id: 'usr-bobby' }).del();
+  await db('users').where({ email: 'bobby@groundwork.org.za' }).del();
+  console.log('Seeding usr-bobby user...');
+  await db('users').insert({
+    id: 'usr-bobby',
+    name: 'Bobby Peek',
+    email: 'bobby@groundwork.org.za',
+    passwordHash: bobbyHash,
+    role: 'client'
+  });
+
 
   // 2. Always seed new tables if they are empty
   const awarenessCount = await db('awareness_days').count('id as count').first();
@@ -757,6 +758,20 @@ async function seedInitialData() {
       textExcerpt: 'Survey data showing 87 out of 100 Soweto waste pickers operate without basic safety boots.',
       uploadedBy: 'usr-admin'
     });
+  }
+
+  // Ensure cu-bobby client-user link is restored if groundwork-demo exists
+  const gwExists = await db('client_workspaces').where({ id: 'groundwork-demo' }).first();
+  if (gwExists) {
+    const linkExists = await db('client_users').where({ id: 'cu-bobby' }).first();
+    if (!linkExists) {
+      console.log('Restoring cu-bobby client-user link...');
+      await db('client_users').insert({
+        id: 'cu-bobby',
+        userId: 'usr-bobby',
+        clientId: 'groundwork-demo'
+      });
+    }
   }
 
   console.log('Seed data successfully written to database.');
