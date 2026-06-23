@@ -641,8 +641,8 @@ export function renderClientsModule(container) {
     <!-- Clients Grid -->
     <div class="clients-card-grid" id="clientsGridContainer">
       ${state.clients.map(c => {
-        const statusClass = c.isBriefApproved ? 'green' : 'yellow';
-        const statusText = c.isBriefApproved ? 'Healthy' : 'Pending Onboarding';
+        const statusClass = c.databaseBacked ? (c.isBriefApproved ? 'green' : 'yellow') : 'disabled';
+        const statusText = c.databaseBacked ? (c.isBriefApproved ? 'Healthy' : 'Pending Onboarding') : 'Frontend Demo Placeholder';
         return `
         <div class="client-card card hover-card-clickable" data-client-id="${c.id}">
           <div class="client-card-top">
@@ -696,7 +696,12 @@ export function renderClientsModule(container) {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation(); // Avoid opening the client profile
         const id = btn.getAttribute('data-id');
-        const clName = state.clients.find(c => c.id === id)?.name || 'this workspace';
+        const clientObj = state.clients.find(c => c.id === id);
+        if (clientObj && !clientObj.databaseBacked) {
+          alert('This is a frontend demo placeholder and cannot be deleted.');
+          return;
+        }
+        const clName = clientObj?.name || 'this workspace';
         if (confirm(`Are you sure you want to permanently delete the workspace "${clName}"? This will delete all associated campaigns, meetings, evidence, reports, and AI logs.`)) {
           try {
             await deleteClientWorkspace(id);
@@ -723,8 +728,8 @@ export function renderClientsModule(container) {
     });
 
     gridContainer.innerHTML = filtered.length > 0 ? filtered.map(c => {
-      const statusClass = c.isBriefApproved ? 'green' : 'yellow';
-      const statusText = c.isBriefApproved ? 'Healthy' : 'Pending Onboarding';
+      const statusClass = c.databaseBacked ? (c.isBriefApproved ? 'green' : 'yellow') : 'disabled';
+      const statusText = c.databaseBacked ? (c.isBriefApproved ? 'Healthy' : 'Pending Onboarding') : 'Frontend Demo Placeholder';
       return `
       <div class="client-card card hover-card-clickable" data-client-id="${c.id}">
         <div class="client-card-top">
@@ -1404,6 +1409,10 @@ function renderClientProfile(container, clientId) {
   const deleteBtn = container.querySelector('#btnDeleteProfileWorkspace');
   if (deleteBtn) {
     deleteBtn.addEventListener('click', async () => {
+      if (!client.databaseBacked) {
+        alert('This is a frontend demo placeholder and cannot be deleted.');
+        return;
+      }
       const clName = client.name || 'this workspace';
       if (confirm(`Are you sure you want to permanently delete the workspace "${clName}"? This will delete all associated campaigns, meetings, evidence, reports, and AI logs.`)) {
         try {

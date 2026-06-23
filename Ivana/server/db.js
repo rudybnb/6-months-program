@@ -454,7 +454,36 @@ export async function initDb() {
 }
 
 async function seedInitialData() {
-  // Always seed new tables if they are empty
+  // 1. Seed users individually first to ensure foreign keys can resolve
+  const adminExists = await db('users').where({ id: 'usr-admin' }).first();
+  if (!adminExists) {
+    console.log('Seeding usr-admin user...');
+    const adminSalt = await bcrypt.genSalt(10);
+    const adminHash = await bcrypt.hash('admin123', adminSalt);
+    await db('users').insert({
+      id: 'usr-admin',
+      name: 'Irene K.',
+      email: 'admin@ikcomms.org',
+      passwordHash: adminHash,
+      role: 'admin'
+    });
+  }
+
+  const bobbyExists = await db('users').where({ id: 'usr-bobby' }).first();
+  if (!bobbyExists) {
+    console.log('Seeding usr-bobby user...');
+    const bobbySalt = await bcrypt.genSalt(10);
+    const bobbyHash = await bcrypt.hash('bobby123', bobbySalt);
+    await db('users').insert({
+      id: 'usr-bobby',
+      name: 'Bobby Peek',
+      email: 'bobby@groundwork.org.za',
+      passwordHash: bobbyHash,
+      role: 'client'
+    });
+  }
+
+  // 2. Always seed new tables if they are empty
   const awarenessCount = await db('awareness_days').count('id as count').first();
   if (awarenessCount.count === 0) {
     const days = [
@@ -471,41 +500,36 @@ async function seedInitialData() {
     await db('awareness_days').insert(days);
   }
 
+  // 3. Seed content requests if table is empty AND client exists
   const reqCount = await db('content_requests').count('id as count').first();
   if (reqCount.count === 0) {
-    const reqs = [
-      { id: 'cr1', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'Venezuela', contentFor: 'gW Content', description: 'Highlight air filters in South America.', assignee: 'Ivana', dueDate: 'Week of 9/02/2026', status: 'Completed', sourceMaterial: 'Venezuela Air Quality Logs', requestedBy: 'Bobby Peek' },
-      { id: 'cr2', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'Cradle to grave Webinar', contentFor: 'gW Content', description: 'Post on each speaker -\n 8 posts', assignee: 'Kim', dueDate: 'Week of 9/02/2026', status: 'Completed', sourceMaterial: 'Flyer C2G Africa - Google Docs', requestedBy: 'Bobby Peek' },
-      { id: 'cr3', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'AMSA Protest deadly air', contentFor: 'CAF Content', description: 'Interventions and citizen logs.', assignee: 'Ivana', dueDate: 'TBD', status: 'Awaiting Instruction', sourceMaterial: 'AMSA VEJA Protest 2023 Complete', requestedBy: 'Irene K.' }
-    ];
-    await db('content_requests').insert(reqs);
+    const gwExists = await db('client_workspaces').where({ id: 'groundwork-demo' }).first();
+    if (gwExists) {
+      const reqs = [
+        { id: 'cr1', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'Venezuela', contentFor: 'gW Content', description: 'Highlight air filters in South America.', assignee: 'Ivana', dueDate: 'Week of 9/02/2026', status: 'Completed', sourceMaterial: 'Venezuela Air Quality Logs', requestedBy: 'Bobby Peek' },
+        { id: 'cr2', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'Cradle to grave Webinar', contentFor: 'gW Content', description: 'Post on each speaker -\n 8 posts', assignee: 'Kim', dueDate: 'Week of 9/02/2026', status: 'Completed', sourceMaterial: 'Flyer C2G Africa - Google Docs', requestedBy: 'Bobby Peek' },
+        { id: 'cr3', clientId: 'groundwork-demo', campaignId: 'cmp1', title: 'AMSA Protest deadly air', contentFor: 'CAF Content', description: 'Interventions and citizen logs.', assignee: 'Ivana', dueDate: 'TBD', status: 'Awaiting Instruction', sourceMaterial: 'AMSA VEJA Protest 2023 Complete', requestedBy: 'Irene K.' }
+      ];
+      await db('content_requests').insert(reqs);
+    }
   }
 
+  // 4. Seed media library if table is empty AND client exists
   const mediaCount = await db('media_library').count('id as count').first();
   if (mediaCount.count === 0) {
-    const media = [
-      { id: 'm1', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'Vaal Air quality workshop', mediaType: 'Video and Photos', archiveLink: 'VEJA Air Quality and Health Workshop2025', sourceFrom: 'Tsepang', usageRights: 'Consent forms signed. Free for social media use.' },
-      { id: 'm2', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'Lephalale Air qulaity workshop', mediaType: 'Photos', archiveLink: 'Lephalale AQHealth CAF', sourceFrom: 'Dorothy', usageRights: 'Internal distribution only.' },
-      { id: 'm3', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'AMSA VEJA Protest', mediaType: 'Videos and photos', archiveLink: 'AMSA VEJA Protest 2023 Complete', sourceFrom: 'Tsepang', usageRights: 'Creative commons. Credit Vaal Environmental Justice Alliance.' }
-    ];
-    await db('media_library').insert(media);
+    const gwExists = await db('client_workspaces').where({ id: 'groundwork-demo' }).first();
+    if (gwExists) {
+      const media = [
+        { id: 'm1', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'Vaal Air quality workshop', mediaType: 'Video and Photos', archiveLink: 'VEJA Air Quality and Health Workshop2025', sourceFrom: 'Tsepang', usageRights: 'Consent forms signed. Free for social media use.' },
+        { id: 'm2', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'Lephalale Air qulaity workshop', mediaType: 'Photos', archiveLink: 'Lephalale AQHealth CAF', sourceFrom: 'Dorothy', usageRights: 'Internal distribution only.' },
+        { id: 'm3', clientId: 'groundwork-demo', campaignId: 'cmp1', subject: 'AMSA VEJA Protest', mediaType: 'Videos and photos', archiveLink: 'AMSA VEJA Protest 2023 Complete', sourceFrom: 'Tsepang', usageRights: 'Creative commons. Credit Vaal Environmental Justice Alliance.' }
+      ];
+      await db('media_library').insert(media);
+    }
   }
 
-  const userCount = await db('users').count('id as count').first();
-  if (userCount.count === 0) {
-    const adminSalt = await bcrypt.genSalt(10);
-    const adminHash = await bcrypt.hash('admin123', adminSalt);
-    const bobbyHash = await bcrypt.hash('bobby123', adminSalt);
 
-    await db('users').insert([
-      { id: 'usr-admin', name: 'Irene K.', email: 'admin@ikcomms.org', passwordHash: adminHash, role: 'admin' },
-      { id: 'usr-bobby', name: 'Bobby Peek', email: 'bobby@groundwork.org.za', passwordHash: bobbyHash, role: 'client' }
-    ]);
-  }
-
-  const clientCount = await db('client_workspaces').count('id as count').first();
-  if (clientCount.count === 0) {
-    const client1 = {
+  const client1 = {
     id: 'groundwork-demo',
     name: 'groundWork SA (Demo)',
     logo: '🌱',
@@ -606,51 +630,119 @@ async function seedInitialData() {
     reportFrequency: 'Monthly'
   };
 
-  await db('client_workspaces').insert([client1, client2]);
+  const gwExists = await db('client_workspaces').where({ id: 'groundwork-demo' }).first();
+  if (!gwExists) {
+    console.log('Seeding groundwork-demo client...');
+    await db('client_workspaces').insert(client1);
 
-  await db('client_users').insert({
-    id: 'cu-bobby',
-    userId: 'usr-bobby',
-    clientId: 'groundwork-demo'
-  });
+    await db('client_users').insert({
+      id: 'cu-bobby',
+      userId: 'usr-bobby',
+      clientId: 'groundwork-demo'
+    });
 
-  await db('campaigns').insert([
-    { id: 'cmp1', clientId: 'groundwork-demo', name: 'Clean Air Durban', goal: 'Deploy 15 sensors', description: 'Deploy 15 air monitors.', priority: 'High', status: 'Active' },
-    { id: 'cmp2', clientId: 'vukani-demo', name: 'Soweto Waste Picker Dignity Project', goal: 'Equip 100 pickers', description: 'Provide safety gear.', priority: 'Medium', status: 'Active' }
-  ]);
-
-  const sampleEvidence = [
-    {
-      id: 'ev_report_pdf',
+    await db('campaigns').insert({
+      id: 'cmp1',
       clientId: 'groundwork-demo',
-      campaignId: 'cmp1',
-      name: 'groundWork_Social_Media_Performance_Report.pdf',
-      originalName: 'groundWork_Social_Media_Performance_Report.pdf',
-      filePath: 'storage/uploads/groundWork_Social_Media_Performance_Report.pdf',
-      fileSize: 154020,
-      contentType: 'application/pdf',
-      onboardingStep: 'General Evidence',
-      sourceType: 'PDF',
-      verificationStatus: 'Verified',
-      textExcerpt: 'Facebook reach grew to 4.2K followers and 178.7K views; Instagram views reached 319.2K.',
-      uploadedBy: 'usr-admin'
-    },
-    {
-      id: 'ev1',
-      clientId: 'groundwork-demo',
-      campaignId: 'cmp1',
-      name: 'Durban_South_Air_Quality_Audit_2025.pdf',
-      originalName: 'Durban_South_Air_Quality_Audit_2025.pdf',
-      filePath: 'storage/uploads/Durban_South_Air_Quality_Audit_2025.pdf',
-      fileSize: 245000,
-      contentType: 'application/pdf',
-      onboardingStep: 'General Evidence',
-      sourceType: 'PDF',
-      verificationStatus: 'Verified',
-      textExcerpt: 'PM2.5 levels exceed WHO limits by 140% on average during winter months.',
-      uploadedBy: 'usr-admin'
-    },
-    {
+      name: 'Clean Air Durban',
+      goal: 'Deploy 15 sensors',
+      description: 'Deploy 15 air monitors.',
+      priority: 'High',
+      status: 'Active'
+    });
+
+    await db('evidence').insert([
+      {
+        id: 'ev_report_pdf',
+        clientId: 'groundwork-demo',
+        campaignId: 'cmp1',
+        name: 'groundWork_Social_Media_Performance_Report.pdf',
+        originalName: 'groundWork_Social_Media_Performance_Report.pdf',
+        filePath: 'storage/uploads/groundWork_Social_Media_Performance_Report.pdf',
+        fileSize: 154020,
+        contentType: 'application/pdf',
+        onboardingStep: 'General Evidence',
+        sourceType: 'PDF',
+        verificationStatus: 'Verified',
+        textExcerpt: 'Facebook reach grew to 4.2K followers and 178.7K views; Instagram views reached 319.2K.',
+        uploadedBy: 'usr-admin'
+      },
+      {
+        id: 'ev1',
+        clientId: 'groundwork-demo',
+        campaignId: 'cmp1',
+        name: 'Durban_South_Air_Quality_Audit_2025.pdf',
+        originalName: 'Durban_South_Air_Quality_Audit_2025.pdf',
+        filePath: 'storage/uploads/Durban_South_Air_Quality_Audit_2025.pdf',
+        fileSize: 245000,
+        contentType: 'application/pdf',
+        onboardingStep: 'General Evidence',
+        sourceType: 'PDF',
+        verificationStatus: 'Verified',
+        textExcerpt: 'PM2.5 levels exceed WHO limits by 140% on average during winter months.',
+        uploadedBy: 'usr-admin'
+      }
+    ]);
+
+    await db('meetings').insert([
+      {
+        id: 'meet_gw_onboarding',
+        clientId: 'groundwork-demo',
+        campaignId: 'cmp1',
+        title: 'Initial Onboarding Alignment Meeting',
+        date: '2026-06-22',
+        notes: 'Reviewed clean air Durban strategy.',
+        transcript: 'Bobby Peek: "We need 15 sensors deployed in schools so we can track Durban air pollution."',
+        status: 'Processed'
+      }
+    ]);
+
+    await db('ai_outputs').insert([
+      {
+        id: 'out1',
+        clientId: 'groundwork-demo',
+        campaignId: 'cmp1',
+        agentId: 'socialmedia',
+        outputType: '5 Facebook posts',
+        content: '🚨 Durban Air Quality Alert! 🚨\n\nDid you know that Southern Durban schools exceed WHO air safety limits by 140% during winter?',
+        confidenceScore: 98,
+        verificationStatus: 'Verified',
+        approvalStatus: 'Draft',
+        sourceEvidenceId: 'ev1'
+      }
+    ]);
+
+    await db('reports').insert([
+      {
+        id: 'rep1',
+        clientId: 'groundwork-demo',
+        name: 'Durban School Air Quality Status Report',
+        donor: 'Clean Air Fund',
+        dueDate: '2026-07-15',
+        status: 'Drafting',
+        completion: 45,
+        agent: 'Donor Reporting Agent',
+        reportType: 'Donor'
+      }
+    ]);
+  }
+
+  const vukaniExists = await db('client_workspaces').where({ id: 'vukani-demo' }).first();
+  if (!vukaniExists) {
+    console.log('Seeding vukani-demo client...');
+    await db('client_workspaces').insert(client2);
+
+    await db('campaigns').insert({
+      id: 'cmp2',
+      clientId: 'vukani-demo',
+      name: 'Soweto Waste Picker Dignity Project',
+      goal: 'Equip 100 pickers',
+      description: 'Provide safety gear.',
+      priority: 'Medium',
+      status: 'Active'
+    });
+
+    await db('evidence').insert({
       id: 'ev3',
       clientId: 'vukani-demo',
       campaignId: 'cmp2',
@@ -664,51 +756,7 @@ async function seedInitialData() {
       verificationStatus: 'Needs Review',
       textExcerpt: 'Survey data showing 87 out of 100 Soweto waste pickers operate without basic safety boots.',
       uploadedBy: 'usr-admin'
-    }
-  ];
-  await db('evidence').insert(sampleEvidence);
-
-  await db('meetings').insert([
-    {
-      id: 'meet_gw_onboarding',
-      clientId: 'groundwork-demo',
-      campaignId: 'cmp1',
-      title: 'Initial Onboarding Alignment Meeting',
-      date: '2026-06-22',
-      notes: 'Reviewed clean air Durban strategy.',
-      transcript: 'Bobby Peek: "We need 15 sensors deployed in schools so we can track Durban air pollution."',
-      status: 'Processed'
-    }
-  ]);
-
-  await db('ai_outputs').insert([
-    {
-      id: 'out1',
-      clientId: 'groundwork-demo',
-      campaignId: 'cmp1',
-      agentId: 'socialmedia',
-      outputType: '5 Facebook posts',
-      content: '🚨 Durban Air Quality Alert! 🚨\n\nDid you know that Southern Durban schools exceed WHO air safety limits by 140% during winter?',
-      confidenceScore: 98,
-      verificationStatus: 'Verified',
-      approvalStatus: 'Draft',
-      sourceEvidenceId: 'ev1'
-    }
-  ]);
-
-  await db('reports').insert([
-    {
-      id: 'rep1',
-      clientId: 'groundwork-demo',
-      name: 'Durban School Air Quality Status Report',
-      donor: 'Clean Air Fund',
-      dueDate: '2026-07-15',
-      status: 'Drafting',
-      completion: 45,
-      agent: 'Donor Reporting Agent',
-      reportType: 'Donor'
-    }
-  ]);
+    });
   }
 
   console.log('Seed data successfully written to database.');

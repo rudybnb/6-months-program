@@ -237,17 +237,19 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 app.get('/api/clients', authenticateToken, async (req, res) => {
   try {
+    let clients;
     if (req.user.role === 'admin') {
-      const clients = await db('client_workspaces').select('*');
-      res.json(clients);
+      clients = await db('client_workspaces').select('*');
     } else {
       const clientIds = await db('client_users')
         .where({ userId: req.user.id })
         .pluck('clientId');
-      const clients = await db('client_workspaces').whereIn('id', clientIds);
-      res.json(clients);
+      clients = await db('client_workspaces').whereIn('id', clientIds);
     }
+    console.log(`[TEMP DEBUG] GET /api/clients - returning ${clients.length} clients:`, clients.map(c => ({ id: c.id, name: c.name })));
+    res.json(clients);
   } catch (err) {
+    console.error('[TEMP DEBUG] GET /api/clients error:', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -399,17 +401,23 @@ app.put('/api/clients/:id/brief', authenticateToken, checkClientAccess, async (r
 });
 
 app.delete('/api/clients/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const clientId = req.params.id;
+  console.log(`[TEMP DEBUG] DELETE /api/clients/:id - request received for ID: ${clientId}`);
   try {
-    const client = await db('client_workspaces').where({ id: req.params.id }).first();
+    const client = await db('client_workspaces').where({ id: clientId }).first();
+    console.log(`[TEMP DEBUG] Database lookup for ID ${clientId} returned:`, client ? { id: client.id, name: client.name } : 'null');
     if (!client) {
+      console.log(`[TEMP DEBUG] DELETE /api/clients/:id - ID ${clientId} not found, returning 404`);
       return res.status(404).json({ message: 'Client workspace not found.' });
     }
 
-    await logAudit(req.user.id, 'WORKSPACE_DELETION', req.params.id, req.params.id, `Workspace "${client.name}" deleted by admin.`, req);
-    await db('client_workspaces').where({ id: req.params.id }).del();
+    await logAudit(req.user.id, 'WORKSPACE_DELETION', clientId, clientId, `Workspace "${client.name}" deleted by admin.`, req);
+    const delResult = await db('client_workspaces').where({ id: clientId }).del();
+    console.log(`[TEMP DEBUG] DELETE /api/clients/:id - delete query completed. Rows affected: ${delResult}`);
 
     res.json({ message: 'Client workspace deleted successfully.' });
   } catch (err) {
+    console.error(`[TEMP DEBUG] DELETE /api/clients/:id error for ID ${clientId}:`, err);
     res.status(500).json({ message: err.message });
   }
 });

@@ -690,10 +690,11 @@ export async function loadClientWorkspaceData(clientId) {
     if (clientRes.ok) {
       const clientData = await clientRes.json();
       const idx = state.clients.findIndex(c => c.id === clientId);
+      const taggedClient = { ...clientData, databaseBacked: true };
       if (idx > -1) {
-        state.clients[idx] = clientData;
+        state.clients[idx] = taggedClient;
       } else {
-        state.clients.push(clientData);
+        state.clients.push(taggedClient);
       }
     }
 
@@ -834,11 +835,17 @@ export async function changeUserRole(role) {
     if (loginRes.ok) {
       const userData = await loginRes.json();
       state.token = userData.token;
+      console.log('[TEMP DEBUG] changeUserRole - Login successful, token set');
 
       // Reload clients
       const clientsRes = await authFetch(`${API_BASE}/api/clients`);
+      console.log(`[TEMP DEBUG] changeUserRole - GET /api/clients response status: ${clientsRes.status}`);
       if (clientsRes.ok) {
-        state.clients = await clientsRes.json();
+        const dbClients = await clientsRes.json();
+        state.clients = dbClients.map(c => ({ ...c, databaseBacked: true }));
+        console.log(`[TEMP DEBUG] changeUserRole - Loaded ${state.clients.length} database-backed clients`);
+      } else {
+        console.warn('[TEMP DEBUG] changeUserRole - Failed to load clients from database, using frontend fallback');
       }
 
       if (role === 'admin') {
@@ -848,6 +855,8 @@ export async function changeUserRole(role) {
       }
 
       await loadClientWorkspaceData(state.selectedClientId);
+    } else {
+      console.warn(`[TEMP DEBUG] changeUserRole - Login response not OK: ${loginRes.status}`);
     }
   } catch (err) {
     console.error('Authentication check failed:', err);
@@ -1406,7 +1415,8 @@ export async function addClientWorkspace(clientObj, campaigns = [], evidence = [
     // Reload clients and select
     const clientsRes = await authFetch(`${API_BASE}/api/clients`);
     if (clientsRes.ok) {
-      state.clients = await clientsRes.json();
+      const dbClients = await clientsRes.json();
+      state.clients = dbClients.map(c => ({ ...c, databaseBacked: true }));
     }
 
     state.selectedClientId = savedClient.id;
@@ -1462,9 +1472,11 @@ export async function rejectMeetingChangeLog(logId) {
 // Delete client workspace from backend database and refresh state
 export async function deleteClientWorkspace(clientId) {
   try {
+    console.log(`[TEMP DEBUG] deleteClientWorkspace - sending DELETE /api/clients/${clientId}`);
     const res = await authFetch(`${API_BASE}/api/clients/${clientId}`, {
       method: 'DELETE'
     });
+    console.log(`[TEMP DEBUG] deleteClientWorkspace - DELETE /api/clients/${clientId} response status: ${res.status}`);
 
     if (!res.ok) {
       const err = await res.json();
@@ -1473,8 +1485,10 @@ export async function deleteClientWorkspace(clientId) {
 
     // Reload clients
     const clientsRes = await authFetch(`${API_BASE}/api/clients`);
+    console.log(`[TEMP DEBUG] deleteClientWorkspace - Reload GET /api/clients response status: ${clientsRes.status}`);
     if (clientsRes.ok) {
-      state.clients = await clientsRes.json();
+      const dbClients = await clientsRes.json();
+      state.clients = dbClients.map(c => ({ ...c, databaseBacked: true }));
     }
 
     // Switch selected client if active was deleted
