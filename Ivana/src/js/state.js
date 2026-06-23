@@ -835,28 +835,21 @@ export async function changeUserRole(role) {
     if (loginRes.ok) {
       const userData = await loginRes.json();
       state.token = userData.token;
-      console.log('[TEMP DEBUG] changeUserRole - Login successful, token set');
 
       // Reload clients
       const clientsRes = await authFetch(`${API_BASE}/api/clients`);
-      console.log(`[TEMP DEBUG] changeUserRole - GET /api/clients response status: ${clientsRes.status}`);
       if (clientsRes.ok) {
         const dbClients = await clientsRes.json();
         state.clients = dbClients.map(c => ({ ...c, databaseBacked: true }));
-        console.log(`[TEMP DEBUG] changeUserRole - Loaded ${state.clients.length} database-backed clients`);
-      } else {
-        console.warn('[TEMP DEBUG] changeUserRole - Failed to load clients from database, using frontend fallback');
       }
 
       if (role === 'admin') {
-        state.selectedClientId = state.clients[0]?.id || 'groundwork-demo';
+        state.selectedClientId = state.clients[0]?.id || '';
       } else {
-        state.selectedClientId = userData.clientId || 'groundwork-demo';
+        state.selectedClientId = userData.clientId || '';
       }
 
       await loadClientWorkspaceData(state.selectedClientId);
-    } else {
-      console.warn(`[TEMP DEBUG] changeUserRole - Login response not OK: ${loginRes.status}`);
     }
   } catch (err) {
     console.error('Authentication check failed:', err);
@@ -1472,11 +1465,9 @@ export async function rejectMeetingChangeLog(logId) {
 // Delete client workspace from backend database and refresh state
 export async function deleteClientWorkspace(clientId) {
   try {
-    console.log(`[TEMP DEBUG] deleteClientWorkspace - sending DELETE /api/clients/${clientId}`);
     const res = await authFetch(`${API_BASE}/api/clients/${clientId}`, {
       method: 'DELETE'
     });
-    console.log(`[TEMP DEBUG] deleteClientWorkspace - DELETE /api/clients/${clientId} response status: ${res.status}`);
 
     if (!res.ok) {
       const err = await res.json();
@@ -1485,7 +1476,6 @@ export async function deleteClientWorkspace(clientId) {
 
     // Reload clients
     const clientsRes = await authFetch(`${API_BASE}/api/clients`);
-    console.log(`[TEMP DEBUG] deleteClientWorkspace - Reload GET /api/clients response status: ${clientsRes.status}`);
     if (clientsRes.ok) {
       const dbClients = await clientsRes.json();
       state.clients = dbClients.map(c => ({ ...c, databaseBacked: true }));
