@@ -640,13 +640,16 @@ export function renderClientsModule(container) {
 
     <!-- Clients Grid -->
     <div class="clients-card-grid" id="clientsGridContainer">
-      ${state.clients.map(c => `
+      ${state.clients.map(c => {
+        const statusClass = c.isBriefApproved ? 'green' : 'yellow';
+        const statusText = c.isBriefApproved ? 'Healthy' : 'Pending Onboarding';
+        return `
         <div class="client-card card hover-card-clickable" data-client-id="${c.id}">
           <div class="client-card-top">
             <span class="client-card-logo">${c.logo}</span>
             <div style="display:flex; gap:0.4rem; align-items:center;">
-              <span class="status-badge ${c.status}">
-                <span class="dot"></span> ${c.statusText}
+              <span class="status-badge ${statusClass}">
+                <span class="dot"></span> ${statusText}
               </span>
               ${state.currentUserRole === 'admin' ? `
                 <button type="button" class="btn-delete-workspace" data-id="${c.id}" style="background:none; border:none; cursor:pointer; font-size:1.15rem; color:#ef4444; padding:0.2rem; margin-top:-2px;" title="Delete Workspace">🗑️</button>
@@ -678,7 +681,8 @@ export function renderClientsModule(container) {
             <span class="arrow">→</span>
           </div>
         </div>
-      `).join('')}
+        `;
+      }).join('')}
     </div>
   `;
 
@@ -718,13 +722,16 @@ export function renderClientsModule(container) {
       return matchesSearch && matchesStatus;
     });
 
-    gridContainer.innerHTML = filtered.length > 0 ? filtered.map(c => `
+    gridContainer.innerHTML = filtered.length > 0 ? filtered.map(c => {
+      const statusClass = c.isBriefApproved ? 'green' : 'yellow';
+      const statusText = c.isBriefApproved ? 'Healthy' : 'Pending Onboarding';
+      return `
       <div class="client-card card hover-card-clickable" data-client-id="${c.id}">
         <div class="client-card-top">
           <span class="client-card-logo">${c.logo}</span>
           <div style="display:flex; gap:0.4rem; align-items:center;">
-            <span class="status-badge ${c.status}">
-              <span class="dot"></span> ${c.statusText}
+            <span class="status-badge ${statusClass}">
+              <span class="dot"></span> ${statusText}
             </span>
             ${state.currentUserRole === 'admin' ? `
               <button type="button" class="btn-delete-workspace" data-id="${c.id}" style="background:none; border:none; cursor:pointer; font-size:1.15rem; color:#ef4444; padding:0.2rem; margin-top:-2px;" title="Delete Workspace">🗑️</button>
@@ -756,7 +763,8 @@ export function renderClientsModule(container) {
           <span class="arrow">→</span>
         </div>
       </div>
-    `).join('') : '<div class="chart-empty w-full">No matching NGO clients found.</div>';
+      `;
+    }).join('') : '<div class="chart-empty w-full">No matching NGO clients found.</div>';
 
     // Rebind cards
     gridContainer.querySelectorAll('.client-card').forEach(card => {

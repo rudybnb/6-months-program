@@ -492,18 +492,20 @@ async function seedInitialData() {
   }
 
   const userCount = await db('users').count('id as count').first();
-  if (userCount.count > 0) return;
+  if (userCount.count === 0) {
+    const adminSalt = await bcrypt.genSalt(10);
+    const adminHash = await bcrypt.hash('admin123', adminSalt);
+    const bobbyHash = await bcrypt.hash('bobby123', adminSalt);
 
-  const adminSalt = await bcrypt.genSalt(10);
-  const adminHash = await bcrypt.hash('admin123', adminSalt);
-  const bobbyHash = await bcrypt.hash('bobby123', adminSalt);
+    await db('users').insert([
+      { id: 'usr-admin', name: 'Irene K.', email: 'admin@ikcomms.org', passwordHash: adminHash, role: 'admin' },
+      { id: 'usr-bobby', name: 'Bobby Peek', email: 'bobby@groundwork.org.za', passwordHash: bobbyHash, role: 'client' }
+    ]);
+  }
 
-  await db('users').insert([
-    { id: 'usr-admin', name: 'Irene K.', email: 'admin@ikcomms.org', passwordHash: adminHash, role: 'admin' },
-    { id: 'usr-bobby', name: 'Bobby Peek', email: 'bobby@groundwork.org.za', passwordHash: bobbyHash, role: 'client' }
-  ]);
-
-  const client1 = {
+  const clientCount = await db('client_workspaces').count('id as count').first();
+  if (clientCount.count === 0) {
+    const client1 = {
     id: 'groundwork-demo',
     name: 'groundWork SA (Demo)',
     logo: '🌱',
@@ -707,6 +709,7 @@ async function seedInitialData() {
       reportType: 'Donor'
     }
   ]);
+  }
 
   console.log('Seed data successfully written to database.');
 }
