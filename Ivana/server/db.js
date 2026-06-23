@@ -761,8 +761,8 @@ async function seedInitialData() {
   }
 
   // Ensure cu-bobby client-user link is restored if groundwork-demo exists
-  const gwExists = await db('client_workspaces').where({ id: 'groundwork-demo' }).first();
-  if (gwExists) {
+  const groundworkWorkspaceExists = await db('client_workspaces').where({ id: 'groundwork-demo' }).first();
+  if (groundworkWorkspaceExists) {
     const linkExists = await db('client_users').where({ id: 'cu-bobby' }).first();
     if (!linkExists) {
       console.log('Restoring cu-bobby client-user link...');
