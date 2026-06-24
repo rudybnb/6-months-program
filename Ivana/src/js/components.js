@@ -22,6 +22,10 @@ import {
   approveMeetingChangeLog,
   rejectMeetingChangeLog,
   simulateMeetingAgentAnalysis,
+  proposeClientBriefChangeLog,
+  addCampaign,
+  updateCampaign,
+  deleteCampaign,
   addMeeting,
   deleteClientWorkspace,
   addContentRequest,
@@ -839,6 +843,11 @@ function renderClientProfile(container, clientId) {
             <span class="status-badge ${client.databaseBacked ? (client.isBriefApproved ? 'green' : 'yellow') : 'disabled'}">
               <span class="dot"></span> ${client.databaseBacked ? (client.isBriefApproved ? 'Healthy' : 'Pending Onboarding') : 'Frontend Demo Placeholder'}
             </span>
+            ${state.currentUserRole === 'admin' ? `
+              <button type="button" class="btn btn-outline btn-sm" id="btnEditClientProfile" style="margin-left: 1rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                ✏️ Edit Profile
+              </button>
+            ` : ''}
           </div>
           <p class="subtitle">${client.sector} • 📍 ${client.country}</p>
         </div>
@@ -1425,54 +1434,75 @@ function renderClientProfile(container, clientId) {
       }
     });
   }
+
+  const editBtn = container.querySelector('#btnEditClientProfile');
+  if (editBtn) {
+    editBtn.addEventListener('click', () => {
+      openEditClientProfileModal(client.id);
+    });
+  }
 }
 
 // Sub-renderers for Meeting Intel Tab
 function renderProposedChangeLogsHtml(client_id) {
-  const pendingLogs = state.changeLogs.filter(l => l.client_id === client_id && l.status === 'Pending');
+  const pendingLogs = state.changeLogs.filter(l => (l.clientId === client_id || l.client_id === client_id) && l.status === 'Pending');
   if (pendingLogs.length === 0) {
-    return `<div style="font-size:0.8rem; color:var(--text-muted); font-style:italic; text-align:center; padding:1rem; border:1px dashed var(--border-color); border-radius:8px;">No pending strategic shifts detected. The agents are aligned with current client brief.</div>`;
+    return `<div style="font-size:0.8rem; color:var(--text-muted); font-style:italic; text-align:center; padding:1rem; border:1px dashed var(--border-color); border-radius:8px;">No pending strategic shifts or manual updates detected. The agents are aligned with current client brief.</div>`;
   }
 
-  return pendingLogs.map(log => `
-    <div class="proposed-changelog-box" style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:1rem; margin-top:1rem; font-size:0.8rem; line-height:1.4; color:#78350f;">
-      <h4 style="margin:0 0 0.5rem 0; color:#b45309; font-size:0.85rem; font-weight:700; display:flex; justify-content:space-between; align-items:center; text-transform:none;">
-        <span>⚠️ Strategic Shifts Detected</span>
-        <span style="font-size:0.65rem; background:#fef3c7; padding:0.1rem 0.35rem; border-radius:4px; font-weight:700; color:#b45309;">Approval Required</span>
-      </h4>
-      <p style="font-size:0.75rem; margin-bottom:0.75rem; color:#78350f;">The Meeting Agent scanned the notes and detected differences between the conversation and the current active client profile. Confirm to update other AI agents.</p>
-      
-      <div style="background:white; border:1px solid #fcd34d; border-radius:6px; overflow:hidden; margin-bottom:1rem;">
-        <table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; color:#0f172a;">
-          <thead>
-            <tr style="background:#fef3c7; color:#78350f;">
-              <th style="padding:0.4rem 0.6rem; border-bottom:1px solid #fcd34d;">Parameter</th>
-              <th style="padding:0.4rem 0.6rem; border-bottom:1px solid #fcd34d;">Current Value</th>
-              <th style="padding:0.4rem 0.6rem; border-bottom:1px solid #fcd34d;">Proposed Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${log.changes.map(ch => `
-              <tr style="border-bottom:1px solid #fef3c7;">
-                <td style="padding:0.4rem 0.6rem; font-weight:600; vertical-align:top; color:#b45309;">${ch.label}</td>
-                <td style="padding:0.4rem 0.6rem; vertical-align:top; color:#64748b;">${ch.oldVal}</td>
-                <td style="padding:0.4rem 0.6rem; vertical-align:top; font-weight:600; color:#059669; background:#f0fdf4;">${ch.newVal}<div style="font-size:0.65rem; color:#047857; font-weight:normal; margin-top:0.15rem;">Reason: ${ch.reason}</div></td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
+  return pendingLogs.map(log => {
+    const isManual = !log.meetingId && !log.meeting_id;
+    const themeBg = isManual ? '#f5f3ff' : '#fffbeb';
+    const themeBorder = isManual ? '#c7d2fe' : '#fcd34d';
+    const themeText = isManual ? '#3730a3' : '#78350f';
+    const themeTitleColor = isManual ? '#4f46e5' : '#b45309';
+    const themeBadgeBg = isManual ? '#e0e7ff' : '#fef3c7';
+    const titleText = isManual ? '📝 Proposed Profile Changes' : '⚠️ Strategic Shifts Detected';
+    const badgeText = isManual ? 'Manual Profile Change' : 'Approval Required';
+    const descText = isManual 
+      ? 'An admin manually edited the client profile. Please review and approve these updates to update other AI agents.' 
+      : 'The Meeting Agent scanned the notes and detected differences between the conversation and the current active client profile. Confirm to update other AI agents.';
 
-      <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
-        <button class="btn btn-xs btn-outline ow-reject-shift" data-log-id="${log.id}" style="color:#b91c1c; border-color:#fca5a5;">Reject Shifts</button>
-        <button class="btn btn-xs btn-primary ow-approve-shift" data-log-id="${log.id}" style="background:#059669; border-color:#059669; color:white; font-weight:700;">Approve & Update Agents</button>
+    return `
+      <div class="proposed-changelog-box" style="background:${themeBg}; border:1px solid ${themeBorder}; border-radius:8px; padding:1rem; margin-top:1rem; font-size:0.8rem; line-height:1.4; color:${themeText};">
+        <h4 style="margin:0 0 0.5rem 0; color:${themeTitleColor}; font-size:0.85rem; font-weight:700; display:flex; justify-content:space-between; align-items:center; text-transform:none;">
+          <span>${titleText}</span>
+          <span style="font-size:0.65rem; background:${themeBadgeBg}; padding:0.1rem 0.35rem; border-radius:4px; font-weight:700; color:${themeTitleColor};">${badgeText}</span>
+        </h4>
+        <p style="font-size:0.75rem; margin-bottom:0.75rem; color:${themeText};">${descText}</p>
+        
+        <div style="background:white; border:1px solid ${themeBorder}; border-radius:6px; overflow:hidden; margin-bottom:1rem;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; color:#0f172a;">
+            <thead>
+              <tr style="background:${themeBadgeBg}; color:${themeText};">
+                <th style="padding:0.4rem 0.6rem; border-bottom:1px solid ${themeBorder};">Parameter</th>
+                <th style="padding:0.4rem 0.6rem; border-bottom:1px solid ${themeBorder};">Current Value</th>
+                <th style="padding:0.4rem 0.6rem; border-bottom:1px solid ${themeBorder};">Proposed Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${log.changes.map(ch => `
+                <tr style="border-bottom:1px solid #fef3c7;">
+                  <td style="padding:0.4rem 0.6rem; font-weight:600; vertical-align:top; color:${themeTitleColor};">${ch.label}</td>
+                  <td style="padding:0.4rem 0.6rem; vertical-align:top; color:#64748b;">${ch.oldVal || ch.oldValue || 'None'}</td>
+                  <td style="padding:0.4rem 0.6rem; vertical-align:top; font-weight:600; color:#059669; background:#f0fdf4;">${ch.newVal || ch.newValue || 'None'}<div style="font-size:0.65rem; color:#047857; font-weight:normal; margin-top:0.15rem;">Reason: ${ch.reason}</div></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+          <button class="btn btn-xs btn-outline ow-reject-shift" data-log-id="${log.id}" style="color:#b91c1c; border-color:#fca5a5;">Reject Shifts</button>
+          <button class="btn btn-xs btn-primary ow-approve-shift" data-log-id="${log.id}" style="background:#059669; border-color:#059669; color:white; font-weight:700;">Approve & Update Agents</button>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function renderVersionHistoryHtml(client_id) {
-  const history = state.changeLogHistory.filter(h => h.client_id === client_id);
+  const history = state.changeLogHistory.filter(h => h.clientId === client_id || h.client_id === client_id);
   if (history.length === 0) {
     return `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic; padding:0.5rem 0;">No approved changes recorded yet. This client workspace is running on the original onboarding brief.</div>`;
   }
@@ -1486,15 +1516,15 @@ function renderVersionHistoryHtml(client_id) {
             <span>${h.approvedAt.substring(0,10)} ${h.approvedAt.substring(11,16)}</span>
           </div>
           <div style="margin-bottom:0.25rem;">
-            <span style="text-decoration:line-through; color:#94a3b8;">${h.oldValue}</span>
-            <span style="color:#059669; font-weight:600;"> → ${h.newValue}</span>
+            <span style="text-decoration:line-through; color:#94a3b8;">${h.oldValue || 'None'}</span>
+            <span style="color:#059669; font-weight:600;"> → ${h.newValue || 'None'}</span>
           </div>
           <div style="font-size:0.7rem; color:#64748b; margin-top:0.2rem; background:white; padding:0.3rem 0.5rem; border-radius:4px; border:1px solid #e2e8f0;">
             <strong>Reason:</strong> ${h.reason}
           </div>
           <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text-muted); margin-top:0.3rem;">
             <span>Approved by: <strong>${h.approvedBy}</strong></span>
-            <span>Source: <strong>Meeting alignment</strong></span>
+            <span>Source: <strong>${(h.meetingId || h.meeting_id) ? 'Meeting alignment' : 'Manual Profile Change'}</strong></span>
           </div>
         </div>
       `).join('')}
@@ -1503,7 +1533,7 @@ function renderVersionHistoryHtml(client_id) {
 }
 
 function renderMeetingsLogHtml(client_id) {
-  const meetings = state.meetings.filter(m => m.client_id === client_id);
+  const meetings = state.meetings.filter(m => m.clientId === client_id || m.client_id === client_id);
   if (meetings.length === 0) {
     return `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic; padding:0.5rem 0;">No meetings processed for this workspace.</div>`;
   }
@@ -7547,4 +7577,865 @@ function openNewClientModal() {
 
   modal.style.display = 'flex';
   renderOnboardingStep();
+}
+
+// 6. Edit Client Profile Modal
+export function openEditClientProfileModal(clientId) {
+  const client = state.clients.find(c => c.id === clientId);
+  if (!client) {
+    alert('Client not found.');
+    return;
+  }
+
+  let clientCampaigns = state.campaigns.filter(c => c.clientId === clientId || c.client === clientId);
+  const modal = document.getElementById('globalModalContainer');
+
+  modal.innerHTML = `
+    <style>
+      .edit-tab-btn {
+        color: #64748b;
+        background: none;
+        border: none;
+        padding: 0.6rem 1rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s ease;
+      }
+      .edit-tab-btn:hover {
+        background: #f1f5f9;
+        color: #0f172a;
+      }
+      .edit-tab-btn.active {
+        color: #4f46e5;
+        background: #e0e7ff;
+        border-bottom: 2px solid #4f46e5;
+      }
+      .edit-tab-pane {
+        display: none;
+      }
+      .edit-tab-pane.active {
+        display: block;
+      }
+    </style>
+    <div class="modal-dialog modal-lg" style="max-width: 950px; width: 95%;">
+      <div class="modal-content" style="border:none; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); overflow:hidden;">
+        <div style="background: white; border-radius: 12px; display: flex; flex-direction: column; height: 90vh; max-height: 800px;">
+          
+          <!-- Modal Header -->
+          <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h2 style="font-size: 1.25rem; font-weight: 700; color: #0f172a; margin:0;">Edit Client Profile: ${client.name}</h2>
+              <p style="font-size: 0.75rem; color: #64748b; margin: 0.25rem 0 0 0;">Update client briefing parameters, baseline metrics, and active campaigns.</p>
+            </div>
+            <button type="button" class="btn-close" id="editModalCloseX" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#64748b;">&times;</button>
+          </div>
+
+          <!-- Tab Headers -->
+          <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; gap: 0.25rem; padding: 0.5rem 1rem; overflow-x: auto; white-space: nowrap;">
+            <button class="edit-tab-btn active" data-tab="basic">📋 Basic & Contact</button>
+            <button class="edit-tab-btn" data-tab="goals">🎯 Goals</button>
+            <button class="edit-tab-btn" data-tab="brand">🎨 Brand & Voice</button>
+            <button class="edit-tab-btn" data-tab="audience">👥 Audience</button>
+            <button class="edit-tab-btn" data-tab="funders">💎 Funders & Reports</button>
+            <button class="edit-tab-btn" data-tab="baseline">📊 Social Baseline</button>
+            <button class="edit-tab-btn" data-tab="campaigns">📁 Campaigns</button>
+          </div>
+
+          <!-- Tab Body (Scrollable) -->
+          <div style="flex-grow: 1; padding: 1.5rem; overflow-y: auto; background: #f8fafc;" id="editModalBody">
+             
+             <!-- Tab: Basic & Contact Details -->
+             <div class="edit-tab-pane active" id="edit-pane-basic">
+               <div class="modal-form-fields-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                 <div class="form-group">
+                   <label>Organisation Name</label>
+                   <input type="text" id="eName" value="${client.name || ''}" placeholder="e.g. Clean Air Africa" />
+                 </div>
+                 <div class="form-group">
+                   <label>Workspace Logo (Emoji)</label>
+                   <input type="text" id="eLogo" value="${client.logo || '🌱'}" placeholder="e.g. 💨" />
+                 </div>
+                 <div class="form-group">
+                   <label>Website URL</label>
+                   <input type="text" id="eWebsite" value="${client.website || ''}" placeholder="e.g. www.cleanair.org" />
+                 </div>
+                 <div class="form-group">
+                   <label>Country Base</label>
+                   <input type="text" id="eCountry" value="${client.country || ''}" placeholder="e.g. Kenya" />
+                 </div>
+                 <div class="form-group">
+                   <label>Sector Focus</label>
+                   <input type="text" id="eSector" value="${client.sector || ''}" placeholder="e.g. Air Quality" />
+                 </div>
+                 <div class="form-group">
+                   <label>Primary Contact Name</label>
+                   <input type="text" id="eContact" value="${client.primaryContact || ''}" placeholder="e.g. Dr. John Kiprop" />
+                 </div>
+                 <div class="form-group">
+                   <label>Contact Email</label>
+                   <input type="email" id="eEmail" value="${client.email || ''}" placeholder="e.g. contact@cleanair.org" />
+                 </div>
+                 <div class="form-group">
+                   <label>Contact Phone Number</label>
+                   <input type="text" id="ePhone" value="${client.phone || ''}" placeholder="e.g. +254 20 555" />
+                 </div>
+                 <div class="form-group">
+                   <label>Monthly Fee (£)</label>
+                   <input type="number" id="eFee" value="${client.monthlyFee || 0}" placeholder="e.g. 2500" />
+                 </div>
+                 <div class="form-group">
+                   <label>Contract Value (£)</label>
+                   <input type="number" id="eContractValue" value="${client.contractValue || 0}" placeholder="e.g. 30000" />
+                 </div>
+                 <div class="form-group">
+                   <label>Contract Status</label>
+                   <select id="eStatus">
+                     <option value="Lead" ${client.clientStatus === 'Lead' ? 'selected' : ''}>Lead Onboarding</option>
+                     <option value="Active" ${client.clientStatus === 'Active' ? 'selected' : ''}>Active Client</option>
+                     <option value="Paused" ${client.clientStatus === 'Paused' ? 'selected' : ''}>Paused Contract</option>
+                     <option value="Completed" ${client.clientStatus === 'Completed' ? 'selected' : ''}>Completed Client</option>
+                   </select>
+                 </div>
+                 <div class="form-group">
+                   <label>Contract Start Date</label>
+                   <input type="date" id="eStart" value="${client.startDate || ''}" />
+                 </div>
+                 <div class="form-group">
+                   <label>Contract Renewal Date</label>
+                   <input type="date" id="eEnd" value="${client.renewalDate || ''}" />
+                 </div>
+               </div>
+               <div class="form-group mt-3">
+                 <label>Mission Statement</label>
+                 <input type="text" id="eMission" value="${client.mission || ''}" placeholder="Core mission statement..." />
+               </div>
+               <div class="form-group mt-3">
+                 <label>Short Organisation Description</label>
+                 <textarea id="eShortDesc" style="height:60px;" placeholder="Brief description used in headers...">${client.shortDesc || ''}</textarea>
+               </div>
+             </div>
+
+             <!-- Tab: Client Goals -->
+             <div class="edit-tab-pane" id="edit-pane-goals">
+               <div class="modal-form-fields" style="display:flex; flex-direction:column; gap:1rem;">
+                 <div class="form-group">
+                   <label>What does the client want to achieve?</label>
+                   <textarea id="eGoalAchieve" style="height:60px;" placeholder="e.g. Scale school monitoring campaigns...">${client.goalsAchieve || ''}</textarea>
+                 </div>
+                 <div class="form-group">
+                   <label>What problem are they trying to solve?</label>
+                   <textarea id="eGoalProblem" style="height:60px;" placeholder="e.g. Health impacts from high soot emissions...">${client.goalsProblem || ''}</textarea>
+                 </div>
+                 <div class="form-group">
+                   <label>What are their top 3 communication goals?</label>
+                   <textarea id="eGoalTop3" style="height:60px;" placeholder="List top 3 goals...">${client.goalsTop3 || ''}</textarea>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>What does success look like?</label>
+                     <input type="text" id="eGoalSuccess" value="${client.goalsSuccess || ''}" placeholder="Success metric..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Biggest challenges?</label>
+                     <input type="text" id="eGoalChallenges" value="${client.goalsChallenges || ''}" placeholder="e.g. Customs delays, regulations..." />
+                   </div>
+                 </div>
+                 <div class="form-group">
+                   <label>What support do they expect from IK Comms?</label>
+                   <input type="text" id="eGoalSupport" value="${client.goalsSupport || ''}" placeholder="e.g. Social management, Canva briefs..." />
+                 </div>
+               </div>
+             </div>
+
+             <!-- Tab: Brand & Voice -->
+             <div class="edit-tab-pane" id="edit-pane-brand">
+               <div class="modal-form-fields" style="display:flex; flex-direction:column; gap:1rem;">
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Tone of Voice</label>
+                     <input type="text" id="eTone" value="${client.toneOfVoice || ''}" placeholder="e.g. Urgent, Science-backed" />
+                   </div>
+                   <div class="form-group">
+                     <label>Writing Style</label>
+                     <input type="text" id="eStyle" value="${client.writingStyle || ''}" placeholder="e.g. Clear, youth-centric" />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Words to Use</label>
+                     <input type="text" id="eWordsUse" value="${client.wordsToUse || ''}" placeholder="Comma separated..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Words to Avoid</label>
+                     <input type="text" id="eWordsAvoid" value="${client.wordsToAvoid || ''}" placeholder="Avoid words..." />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Brand Colours (Hex)</label>
+                     <input type="text" id="eColours" value="${client.brandColours || ''}" placeholder="e.g. #0284c7, #10b981" />
+                   </div>
+                   <div class="form-group">
+                     <label>Fonts</label>
+                     <input type="text" id="eFonts" value="${client.fonts || ''}" placeholder="e.g. Outfit, Roboto" />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Approved Hashtags</label>
+                     <input type="text" id="eHashtags" value="${client.approvedHashtags || ''}" placeholder="#CleanAir, #Eco" />
+                   </div>
+                   <div class="form-group">
+                     <label>Social Handles</label>
+                     <input type="text" id="eHandles" value="${client.socialHandles || ''}" placeholder="@handle" />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Canva Templates Link</label>
+                     <input type="text" id="eCanva" value="${client.canvaTemplates || ''}" placeholder="http://canva.com/..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Example Posts Upload / Description</label>
+                     <input type="text" id="ePoster" value="${client.posterExamples || ''}" placeholder="Folder links or file names..." />
+                   </div>
+                 </div>
+               </div>
+             </div>
+
+             <!-- Tab: Target Audience -->
+             <div class="edit-tab-pane" id="edit-pane-audience">
+               <div class="modal-form-fields" style="display:flex; flex-direction:column; gap:1rem;">
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Main Target Audience</label>
+                     <input type="text" id="eAudienceMain" value="${client.targetReach || ''}" placeholder="Who is key to reach..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Community Audience</label>
+                     <input type="text" id="eAudienceComm" value="${client.audienceCommunity || ''}" placeholder="Fence-line communities..." />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Donor Audience</label>
+                     <input type="text" id="eAudienceDonor" value="${client.audienceDonor || ''}" placeholder="Clean air foundations..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Government/Policy Audience</label>
+                     <input type="text" id="eAudienceGov" value="${client.audienceGovernment || ''}" placeholder="Health ministries..." />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Youth Audience</label>
+                     <input type="text" id="eAudienceYouth" value="${client.audienceYouth || ''}" placeholder="School environment clubs..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Media Audience</label>
+                     <input type="text" id="eAudienceMedia" value="${client.audienceMedia || ''}" placeholder="Environmental reporters..." />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Geographic Locations</label>
+                     <input type="text" id="eLocations" value="${client.locations || ''}" placeholder="e.g. Nairobi, Kenya" />
+                   </div>
+                   <div class="form-group">
+                     <label>Age Groups</label>
+                     <input type="text" id="eAgeGroups" value="${client.ageGroups || ''}" placeholder="e.g. Parents 25-50" />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Languages Required</label>
+                     <input type="text" id="eLanguages" value="${client.languages || ''}" placeholder="Swahili, English..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Cultural Considerations</label>
+                     <input type="text" id="eCultural" value="${client.culturalConsiderations || ''}" placeholder="e.g. Translation dialects, community leaders..." />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>What must audience understand?</label>
+                     <input type="text" id="eAudienceUnder" value="${client.audienceUnderstanding || ''}" placeholder="Key message hazard..." />
+                   </div>
+                   <div class="form-group">
+                     <label>What action should they take?</label>
+                     <input type="text" id="eAudienceAct" value="${client.audienceAction || ''}" placeholder="Sign petition, join club..." />
+                   </div>
+                 </div>
+               </div>
+             </div>
+
+             <!-- Tab: Funders & Reporting -->
+             <div class="edit-tab-pane" id="edit-pane-funders">
+               <div class="modal-form-fields" style="display:flex; flex-direction:column; gap:1rem;">
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Current Funders</label>
+                     <input type="text" id="eFunders" value="${client.currentFunders || ''}" placeholder="UNEP, Sida..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Grant Names</label>
+                     <input type="text" id="eGrants" value="${client.grantNames || ''}" placeholder="Breathing Zone Grant..." />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Reporting Deadlines</label>
+                     <input type="text" id="eDeadlines" value="${client.reportingDeadlines || ''}" placeholder="Quarterly by 15th..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Required Donor Outputs</label>
+                     <input type="text" id="eOutputs" value="${client.requiredDonorOutputs || ''}" placeholder="CSV logs, monthly brief..." />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Donor Logo Rules</label>
+                     <input type="text" id="eLogoRules" value="${client.donorLogoRequirements || ''}" placeholder="Consultancy logo secondary..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Funder Communication Rules</label>
+                     <input type="text" id="eCommRules" value="${client.funderCommunicationRules || ''}" placeholder="No political lobbying tags..." />
+                   </div>
+                 </div>
+                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                   <div class="form-group">
+                     <label>Required Impact Metrics</label>
+                     <input type="text" id="eImpactMetrics" value="${client.requiredImpactMetrics || ''}" placeholder="Sensors, teachers trained..." />
+                   </div>
+                   <div class="form-group">
+                     <label>Evidence Required by Funders</label>
+                     <input type="text" id="eEvidenceReq" value="${client.requiredEvidence || ''}" placeholder="Installation photos, sign registers..." />
+                   </div>
+                 </div>
+                 <div class="form-group">
+                   <label>Report Frequency</label>
+                   <select id="eFrequency">
+                     <option value="Monthly" ${client.reportFrequency === 'Monthly' ? 'selected' : ''}>Monthly Report</option>
+                     <option value="Quarterly" ${client.reportFrequency === 'Quarterly' ? 'selected' : ''}>Quarterly Report</option>
+                     <option value="Annual" ${client.reportFrequency === 'Annual' ? 'selected' : ''}>Annual Report</option>
+                     <option value="Ad hoc" ${client.reportFrequency === 'Ad hoc' ? 'selected' : ''}>Ad hoc Report</option>
+                   </select>
+                 </div>
+               </div>
+             </div>
+
+             <!-- Tab: Social Media Baseline -->
+             <div class="edit-tab-pane" id="edit-pane-baseline">
+               <div class="modal-form-fields" style="display:flex; flex-direction:column; gap:1rem;">
+                 
+                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                   <!-- Facebook Column -->
+                   <div style="background:white; border:1px solid #cbd5e1; border-radius:8px; padding:0.75rem; display:flex; flex-direction:column; gap:0.5rem;">
+                     <h4 style="margin:0 0 0.25rem 0; font-size:0.8rem; font-weight:700; color:#1877f2; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem; text-transform:none;">📘 Facebook Baseline</h4>
+                     <div class="form-group">
+                       <label>Page URL</label>
+                       <input type="text" id="eFbPageUrl" value="${client.fbPageUrl || ''}" placeholder="facebook.com/..." />
+                     </div>
+                     <div class="form-group">
+                       <label>Followers</label>
+                       <input type="number" id="eFbFollowers" value="${client.fbFollowers || 0}" />
+                     </div>
+                     <div class="form-group">
+                       <label>Avg Monthly Reach</label>
+                       <input type="number" id="eFbAvgReach" value="${client.fbAvgReach || 0}" />
+                     </div>
+                     <div class="form-group">
+                       <label>Avg Engagement Rate (%)</label>
+                       <input type="number" step="0.1" id="eFbAvgEngagement" value="${client.fbAvgEngagement || 0.0}" />
+                     </div>
+                   </div>
+
+                   <!-- Instagram Column -->
+                   <div style="background:white; border:1px solid #cbd5e1; border-radius:8px; padding:0.75rem; display:flex; flex-direction:column; gap:0.5rem;">
+                     <h4 style="margin:0 0 0.25rem 0; font-size:0.8rem; font-weight:700; color:#c13584; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem; text-transform:none;">📸 Instagram Baseline</h4>
+                     <div class="form-group">
+                       <label>Handle</label>
+                       <input type="text" id="eIgHandle" value="${client.igHandle || ''}" placeholder="@..." />
+                     </div>
+                     <div class="form-group">
+                       <label>Followers</label>
+                       <input type="number" id="eIgFollowers" value="${client.igFollowers || 0}" />
+                     </div>
+                     <div class="form-group">
+                       <label>Avg Monthly Reach</label>
+                       <input type="number" id="eIgAvgReach" value="${client.igAvgReach || 0}" />
+                     </div>
+                     <div class="form-group">
+                       <label>Avg Engagement Rate (%)</label>
+                       <input type="number" step="0.1" id="eIgAvgEngagement" value="${client.igAvgEngagement || 0.0}" />
+                     </div>
+                   </div>
+                 </div>
+
+                 <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:1rem;">
+                   <div>
+                     <div class="form-group">
+                       <label>Top Social Media Posts (Description & Performance)</label>
+                       <textarea id="eBaselineTopPosts" style="height:60px;" placeholder="e.g. 1. Post Name (12K reach)...">${client.baselineTopPosts || ''}</textarea>
+                     </div>
+                     <div class="form-group">
+                       <label>Audience Demographics</label>
+                       <textarea id="eBaselineDemographics" style="height:50px;" placeholder="e.g. 60% female, Durban based...">${client.baselineDemographics || ''}</textarea>
+                     </div>
+                   </div>
+                   
+                   <div style="background:white; border:1px solid #cbd5e1; border-radius:8px; padding:0.75rem; display:flex; flex-direction:column; gap:0.5rem; justify-content:center;">
+                     <div class="form-group" style="margin:0;">
+                       <label>Baseline Start Date</label>
+                       <input type="date" id="eBaselineStartDate" value="${client.baselineStartDate || ''}" />
+                     </div>
+                     <p style="font-size:0.65rem; color:#64748b; line-height:1.4; margin:0;">
+                       These values represent the starting benchmark. All future report cards will be compared against these figures.
+                     </p>
+                   </div>
+                 </div>
+               </div>
+             </div>
+
+             <!-- Tab: Campaigns -->
+             <div class="edit-tab-pane" id="edit-pane-campaigns">
+               <div class="modal-form-fields" style="display:flex; flex-direction:column; gap:1rem;">
+                 
+                 <!-- Active Campaigns List -->
+                 <div id="editCampaignsList">
+                    <!-- Dynamic rendering -->
+                 </div>
+
+                 <!-- Add New Campaign Section -->
+                 <div style="background:#f1f5f9; padding:1rem; border-radius:8px; border:1px solid #e2e8f0; display:flex; flex-direction:column; gap:0.75rem; margin-top:0.5rem;">
+                   <h4 style="margin:0 0 0.25rem 0; font-size:0.8rem; font-weight:700; color:#475569; border-bottom:1px solid #cbd5e1; padding-bottom:0.25rem;">Create & Link New Campaign</h4>
+                   
+                   <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                     <div class="form-group">
+                       <label>Campaign Name</label>
+                       <input type="text" id="ecName" placeholder="e.g. Nairobi School Zones" />
+                     </div>
+                     <div class="form-group">
+                       <label>Campaign Goal</label>
+                       <input type="text" id="ecGoal" placeholder="e.g. Deploy 10 monitors" />
+                     </div>
+                   </div>
+
+                   <div class="form-group">
+                     <label>Campaign Description</label>
+                     <textarea id="ecDesc" style="height:45px;" placeholder="Brief description..."></textarea>
+                   </div>
+
+                   <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem;">
+                     <div class="form-group">
+                       <label>Priority</label>
+                       <select id="ecPriority">
+                         <option value="High">High Priority</option>
+                         <option value="Medium">Medium Priority</option>
+                         <option value="Low">Low Priority</option>
+                       </select>
+                     </div>
+                     <div class="form-group">
+                       <label>Start Date</label>
+                       <input type="date" id="ecStart" value="${new Date().toISOString().split('T')[0]}" />
+                     </div>
+                     <div class="form-group">
+                       <label>End Date</label>
+                       <input type="date" id="ecEnd" value="${new Date(Date.now() + 15552000000).toISOString().split('T')[0]}" />
+                     </div>
+                   </div>
+
+                   <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                     <div class="form-group">
+                       <label>Target Platforms</label>
+                       <input type="text" id="ecPlatforms" placeholder="Facebook, WhatsApp..." />
+                     </div>
+                     <div class="form-group">
+                       <label>Content Target (monthly)</label>
+                       <input type="text" id="ecTarget" placeholder="e.g. 8 updates/mo" />
+                     </div>
+                   </div>
+
+                   <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                     <div class="form-group">
+                       <label>Main Campaign Message</label>
+                       <input type="text" id="ecMessage" placeholder="Every child has a right to breathe..." />
+                     </div>
+                     <div class="form-group">
+                       <label>Call to Action (CTA)</label>
+                       <input type="text" id="ecCta" placeholder="Lobby for buffer zones..." />
+                     </div>
+                   </div>
+
+                   <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                     <div class="form-group">
+                       <label>Project Lead</label>
+                       <input type="text" id="ecLead" placeholder="Staff lead..." />
+                     </div>
+                     <div class="form-group">
+                       <label>Related Funder</label>
+                       <input type="text" id="ecFunder" placeholder="Funder name..." />
+                     </div>
+                   </div>
+
+                   <button type="button" class="btn btn-outline" id="btnEditAddCampaign" style="border-color:#4f46e5; color:#4f46e5; margin-top:0.25rem; cursor:pointer;">+ Add Campaign to Database</button>
+                 </div>
+               </div>
+             </div>
+
+          </div>
+
+          <!-- Reason for change (for Approved Briefs) -->
+          ${client.isBriefApproved ? `
+            <div style="background:#f5f3ff; border:1px solid #c7d2fe; padding:0.75rem 1rem; border-radius:8px; margin: 0 1.5rem 1rem 1.5rem; font-size:0.8rem; color:#3730a3; display:flex; flex-direction:column; gap:0.3rem;">
+              <strong style="color:#4f46e5; display:flex; align-items:center; gap:0.25rem; font-size:0.85rem;">📝 Brief is Approved — Reason for Change Required</strong>
+              <span style="font-size:0.7rem; color:#6366f1;">Edits will be saved as a proposed Change Log (Manual Profile Change) requiring admin approval before updating the active profile.</span>
+              <input type="text" id="editProfileReason" placeholder="e.g. Updated monthly fee and target audience demographics based on contract addendum." style="width:100%; font-size:0.8rem; padding:0.4rem 0.6rem; border-radius:4px; border:1px solid #cbd5e1; outline:none; background:white; margin-top:0.25rem;" required />
+            </div>
+          ` : ''}
+
+          <!-- Modal Footer -->
+          <div style="background: white; padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 0.75rem; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;">
+            <button class="btn btn-outline" id="editModalCancelBtn" style="cursor:pointer;">Cancel</button>
+            <button class="btn btn-primary" id="editModalSaveBtn" style="background:var(--primary-color); color:white; font-weight:600; padding:0.5rem 1.5rem; cursor:pointer;">Save Changes</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Bind Tabs visibility toggle
+  modal.querySelectorAll('.edit-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modal.querySelectorAll('.edit-tab-btn').forEach(b => b.classList.remove('active'));
+      modal.querySelectorAll('.edit-tab-pane').forEach(p => p.classList.remove('active'));
+
+      btn.classList.add('active');
+      const tabId = btn.getAttribute('data-tab');
+      const targetPane = modal.querySelector(`#edit-pane-${tabId}`);
+      if (targetPane) targetPane.classList.add('active');
+    });
+  });
+
+  // Render campaigns list helper
+  const renderCampaignsList = () => {
+    const listContainer = document.getElementById('editCampaignsList');
+    if (!listContainer) return;
+    
+    // Refresh campaign data from state
+    clientCampaigns = state.campaigns.filter(c => c.clientId === clientId || c.client === clientId);
+    
+    if (clientCampaigns.length === 0) {
+      listContainer.innerHTML = `<p style="font-size:0.8rem; color:#64748b; font-style:italic; text-align:center; padding:1rem; border:1px dashed #cbd5e1; border-radius:6px; margin:0;">No campaigns registered. Add a campaign below.</p>`;
+      return;
+    }
+    
+    listContainer.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1rem; max-height: 200px; overflow-y: auto;">
+        ${clientCampaigns.map(c => `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:0.6rem 0.8rem; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem;">
+            <div>
+              <strong>${c.name}</strong> <span style="font-size:0.75rem; color:#64748b;">(Goal: ${c.goal || 'None'} • Priority: ${c.priority || 'Medium'} • Status: ${c.status || 'Active'})</span>
+            </div>
+            <button type="button" class="btn btn-xs btn-outline btn-edit-campaign-del" data-id="${c.id}" style="color:var(--danger-color); border-color:#fca5a5; padding: 0.1rem 0.4rem; font-size: 0.7rem; cursor:pointer;">Delete</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    
+    // Bind deletes
+    listContainer.querySelectorAll('.btn-edit-campaign-del').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const id = btn.getAttribute('data-id');
+        const campaign = clientCampaigns.find(c => c.id === id);
+        if (confirm(`Are you sure you want to delete campaign "${campaign.name}"?`)) {
+          const res = await deleteCampaign(id);
+          if (res) {
+            const data = await res.json();
+            if (data.archived) {
+              alert(`Campaign has linked records and has been archived instead of deleted.`);
+            } else {
+              alert(`Campaign deleted successfully.`);
+            }
+            renderCampaignsList();
+          } else {
+            alert('Failed to delete campaign.');
+          }
+        }
+      });
+    });
+  };
+
+  // Render campaigns list initially
+  renderCampaignsList();
+
+  // Add Campaign button
+  const addCampBtn = document.getElementById('btnEditAddCampaign');
+  if (addCampBtn) {
+    addCampBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('ecName').value.trim();
+      const goal = document.getElementById('ecGoal').value.trim();
+      const description = document.getElementById('ecDesc').value.trim();
+      const priority = document.getElementById('ecPriority').value;
+      const startDate = document.getElementById('ecStart').value;
+      const endDate = document.getElementById('ecEnd').value;
+      const targetPlatforms = document.getElementById('ecPlatforms').value.trim();
+      const monthlyContentTarget = document.getElementById('ecTarget').value.trim();
+      const mainMessage = document.getElementById('ecMessage').value.trim();
+      const callToAction = document.getElementById('ecCta').value.trim();
+      const projectLead = document.getElementById('ecLead').value.trim();
+      const relatedFunder = document.getElementById('ecFunder').value.trim();
+
+      if (!name) {
+        alert('Campaign Name is required.');
+        return;
+      }
+
+      const res = await addCampaign(clientId, {
+        name, goal, description, priority, startDate, endDate, targetPlatforms, monthlyContentTarget, mainMessage, callToAction, projectLead, relatedFunder, status: 'Active'
+      });
+
+      if (res && res.ok) {
+        alert('Campaign added successfully!');
+        // Clear inputs
+        document.getElementById('ecName').value = '';
+        document.getElementById('ecGoal').value = '';
+        document.getElementById('ecDesc').value = '';
+        document.getElementById('ecPlatforms').value = '';
+        document.getElementById('ecTarget').value = '';
+        document.getElementById('ecMessage').value = '';
+        document.getElementById('ecCta').value = '';
+        document.getElementById('ecLead').value = '';
+        document.getElementById('ecFunder').value = '';
+        
+        renderCampaignsList();
+      } else {
+        alert('Failed to add campaign.');
+      }
+    });
+  }
+
+  // Cancel and Close handlers
+  const closeX = document.getElementById('editModalCloseX');
+  if (closeX) {
+    closeX.addEventListener('click', () => {
+      modal.style.display = 'none';
+    });
+  }
+
+  const cancelBtn = document.getElementById('editModalCancelBtn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      modal.style.display = 'none';
+    });
+  }
+
+  // Save changes handler
+  const saveBtn = document.getElementById('editModalSaveBtn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+
+      // Gather input values
+      const formValues = {
+        name: document.getElementById('eName').value.trim(),
+        logo: document.getElementById('eLogo').value.trim(),
+        website: document.getElementById('eWebsite').value.trim(),
+        country: document.getElementById('eCountry').value.trim(),
+        sector: document.getElementById('eSector').value.trim(),
+        primaryContact: document.getElementById('eContact').value.trim(),
+        email: document.getElementById('eEmail').value.trim(),
+        phone: document.getElementById('ePhone').value.trim(),
+        monthlyFee: parseFloat(document.getElementById('eFee').value) || 0,
+        contractValue: parseFloat(document.getElementById('eContractValue').value) || 0,
+        startDate: document.getElementById('eStart').value || null,
+        renewalDate: document.getElementById('eEnd').value || null,
+        clientStatus: document.getElementById('eStatus').value,
+        mission: document.getElementById('eMission').value.trim(),
+        shortDesc: document.getElementById('eShortDesc').value.trim(),
+
+        goalsAchieve: document.getElementById('eGoalAchieve').value.trim(),
+        goalsProblem: document.getElementById('eGoalProblem').value.trim(),
+        goalsTop3: document.getElementById('eGoalTop3').value.trim(),
+        goalsSuccess: document.getElementById('eGoalSuccess').value.trim(),
+        goalsChallenges: document.getElementById('eGoalChallenges').value.trim(),
+        goalsSupport: document.getElementById('eGoalSupport').value.trim(),
+
+        brandColours: document.getElementById('eColours').value.trim(),
+        fonts: document.getElementById('eFonts').value.trim(),
+        toneOfVoice: document.getElementById('eTone').value.trim(),
+        writingStyle: document.getElementById('eStyle').value.trim(),
+        wordsToUse: document.getElementById('eWordsUse').value.trim(),
+        wordsToAvoid: document.getElementById('eWordsAvoid').value.trim(),
+        approvedHashtags: document.getElementById('eHashtags').value.trim(),
+        socialHandles: document.getElementById('eHandles').value.trim(),
+        canvaTemplates: document.getElementById('eCanva').value.trim(),
+        posterExamples: document.getElementById('ePoster').value.trim(),
+
+        targetReach: document.getElementById('eAudienceMain').value.trim(),
+        audienceCommunity: document.getElementById('eAudienceComm').value.trim(),
+        audienceDonor: document.getElementById('eAudienceDonor').value.trim(),
+        audienceGovernment: document.getElementById('eAudienceGov').value.trim(),
+        audienceYouth: document.getElementById('eAudienceYouth').value.trim(),
+        audienceMedia: document.getElementById('eAudienceMedia').value.trim(),
+        locations: document.getElementById('eLocations').value.trim(),
+        ageGroups: document.getElementById('eAgeGroups').value.trim(),
+        languages: document.getElementById('eLanguages').value.trim(),
+        culturalConsiderations: document.getElementById('eCultural').value.trim(),
+        audienceUnderstanding: document.getElementById('eAudienceUnder').value.trim(),
+        audienceAction: document.getElementById('eAudienceAct').value.trim(),
+
+        currentFunders: document.getElementById('eFunders').value.trim(),
+        grantNames: document.getElementById('eGrants').value.trim(),
+        reportingDeadlines: document.getElementById('eDeadlines').value.trim(),
+        requiredDonorOutputs: document.getElementById('eOutputs').value.trim(),
+        donorLogoRequirements: document.getElementById('eLogoRules').value.trim(),
+        funderCommunicationRules: document.getElementById('eCommRules').value.trim(),
+        requiredImpactMetrics: document.getElementById('eImpactMetrics').value.trim(),
+        requiredEvidence: document.getElementById('eEvidenceReq').value.trim(),
+        reportFrequency: document.getElementById('eFrequency').value,
+
+        fbPageUrl: document.getElementById('eFbPageUrl').value.trim(),
+        fbFollowers: parseInt(document.getElementById('eFbFollowers').value) || 0,
+        fbAvgReach: parseInt(document.getElementById('eFbAvgReach').value) || 0,
+        fbAvgEngagement: parseFloat(document.getElementById('eFbAvgEngagement').value) || 0.0,
+        igHandle: document.getElementById('eIgHandle').value.trim(),
+        igFollowers: parseInt(document.getElementById('eIgFollowers').value) || 0,
+        igAvgReach: parseInt(document.getElementById('eIgAvgReach').value) || 0,
+        igAvgEngagement: parseFloat(document.getElementById('eIgAvgEngagement').value) || 0.0,
+        baselineTopPosts: document.getElementById('eBaselineTopPosts').value.trim(),
+        baselineDemographics: document.getElementById('eBaselineDemographics').value.trim(),
+        baselineStartDate: document.getElementById('eBaselineStartDate').value || null
+      };
+
+      if (!formValues.name) {
+        alert('Organisation Name is required.');
+        return;
+      }
+
+      // Fields list for comparison
+      const BRIEF_FIELDS = {
+        name: "Organisation Name",
+        logo: "Workspace Logo (Emoji)",
+        website: "Website URL",
+        country: "Country Base",
+        sector: "Sector Focus",
+        primaryContact: "Primary Contact Name",
+        email: "Contact Email",
+        phone: "Contact Phone Number",
+        monthlyFee: "Monthly Fee (£)",
+        contractValue: "Contract Value (£)",
+        startDate: "Contract Start Date",
+        renewalDate: "Contract End/Renewal Date",
+        clientStatus: "Contract Status",
+        goalsAchieve: "What client wants to achieve",
+        goalsProblem: "Problem client is solving",
+        goalsTop3: "Top 3 communication goals",
+        goalsSuccess: "What success looks like",
+        goalsChallenges: "Biggest challenges",
+        goalsSupport: "IK support expected",
+        mission: "Mission Statement",
+        shortDesc: "Short Organisation Description",
+        toneOfVoice: "Tone of Voice",
+        writingStyle: "Writing Style",
+        wordsToUse: "Words to Use",
+        wordsToAvoid: "Words to Avoid",
+        brandColours: "Brand Colours",
+        fonts: "Fonts",
+        approvedHashtags: "Approved Hashtags",
+        socialHandles: "Social Handles",
+        canvaTemplates: "Canva Templates Link",
+        posterExamples: "Example Posts Upload / Description",
+        targetReach: "Main Target Audience",
+        audienceCommunity: "Community Audience",
+        audienceDonor: "Donor Audience",
+        audienceGovernment: "Government/Policy Audience",
+        audienceYouth: "Youth Audience",
+        audienceMedia: "Media Audience",
+        locations: "Geographic Locations",
+        ageGroups: "Age Groups",
+        languages: "Languages Required",
+        culturalConsiderations: "Cultural Considerations",
+        audienceUnderstanding: "What audience must understand",
+        audienceAction: "What action audience should take",
+        currentFunders: "Current Funders",
+        grantNames: "Grant Names",
+        reportingDeadlines: "Reporting Deadlines",
+        requiredDonorOutputs: "Required Donor Outputs",
+        donorLogoRequirements: "Donor Logo Rules",
+        funderCommunicationRules: "Funder Communication Rules",
+        requiredImpactMetrics: "Required Impact Metrics",
+        requiredEvidence: "Evidence Required by Funders",
+        reportFrequency: "Report Frequency",
+        fbPageUrl: "Facebook Page URL",
+        fbFollowers: "Facebook Followers",
+        fbAvgReach: "Facebook Average Reach",
+        fbAvgEngagement: "Facebook Average Engagement Rate (%)",
+        igHandle: "Instagram Handle",
+        igFollowers: "Instagram Followers",
+        igAvgReach: "Instagram Average Reach",
+        igAvgEngagement: "Instagram Average Engagement Rate (%)",
+        baselineTopPosts: "Top Social Media Posts",
+        baselineDemographics: "Audience Demographics",
+        baselineStartDate: "Baseline Start Date"
+      };
+
+      const changes = [];
+      for (const field in BRIEF_FIELDS) {
+        let oldVal = client[field];
+        let newVal = formValues[field];
+
+        if (oldVal === undefined || oldVal === null) oldVal = '';
+        if (newVal === undefined || newVal === null) newVal = '';
+
+        if (String(oldVal).trim() !== String(newVal).trim()) {
+          changes.push({
+            field,
+            label: BRIEF_FIELDS[field],
+            oldVal: String(oldVal),
+            newVal: String(newVal)
+          });
+        }
+      }
+
+      if (changes.length === 0) {
+        alert('No changes were made to the profile briefing fields.');
+        modal.style.display = 'none';
+        return;
+      }
+
+      if (client.isBriefApproved) {
+        const reasonInput = document.getElementById('editProfileReason');
+        const reasonText = reasonInput ? reasonInput.value.trim() : '';
+        if (!reasonText) {
+          alert('Please enter a reason for this change. The client brief is already approved.');
+          return;
+        }
+
+        // Attach reason to proposed changes
+        changes.forEach(c => c.reason = reasonText);
+
+        await proposeClientBriefChangeLog(clientId, changes);
+        alert('Proposed changes saved! A proposed Change Log (Manual Profile Change) has been created and requires admin approval.');
+      } else {
+        // Direct save
+        await updateClientBrief(clientId, {
+          ...formValues,
+          reason: 'Direct profile edit (Brief not yet approved)'
+        });
+        alert('Client profile updated successfully!');
+      }
+
+      modal.style.display = 'none';
+      const container = document.getElementById('mainViewContainer');
+      renderClientProfile(container, clientId);
+    });
+  }
+
+  modal.style.display = 'flex';
 }

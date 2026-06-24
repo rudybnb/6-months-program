@@ -1497,6 +1497,69 @@ export async function deleteClientWorkspace(clientId) {
   }
 }
 
+// Propose client brief manual change log
+export async function proposeClientBriefChangeLog(clientId, changes = []) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${clientId}/change-logs/propose`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meetingId: null, changes })
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(clientId);
+    }
+  } catch (err) {
+    console.error('Propose manual change log failed:', err);
+  }
+}
+
+// Add/update/delete campaigns from frontend state
+export async function addCampaign(clientId, campaignData) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${clientId}/campaigns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(campaignData)
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(clientId);
+    }
+    return res;
+  } catch (err) {
+    console.error('Add campaign failed:', err);
+  }
+}
+
+export async function updateCampaign(campaignId, campaignData) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/campaigns/${campaignId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(campaignData)
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+    return res;
+  } catch (err) {
+    console.error('Update campaign failed:', err);
+  }
+}
+
+export async function deleteCampaign(campaignId) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/campaigns/${campaignId}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+    return res;
+  } catch (err) {
+    console.error('Delete campaign failed:', err);
+  }
+}
+
 export function simulateMeetingAgentAnalysis(meetingText) {
   const changes = [];
   const text = meetingText.toLowerCase();

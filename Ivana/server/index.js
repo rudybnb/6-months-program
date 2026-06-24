@@ -357,7 +357,7 @@ app.get('/api/clients/:id', authenticateToken, checkClientAccess, async (req, re
   }
 });
 
-app.put('/api/clients/:id/brief', authenticateToken, checkClientAccess, async (req, res) => {
+app.put('/api/clients/:id/brief', authenticateToken, requireAdmin, checkClientAccess, async (req, res) => {
   try {
     const client = await db('client_workspaces').where({ id: req.params.id }).first();
     if (!client) {
@@ -383,13 +383,140 @@ app.put('/api/clients/:id/brief', authenticateToken, checkClientAccess, async (r
       if (updates[f] !== undefined) dbUpdates[f] = updates[f];
     });
 
+    // Handle float and integer fields
+    const numberFields = [
+      'monthlyFee', 'contractValue', 'fbFollowers', 'fbAvgReach',
+      'fbAvgEngagement', 'igFollowers', 'igAvgReach', 'igAvgEngagement'
+    ];
+    numberFields.forEach(f => {
+      if (updates[f] !== undefined) {
+        dbUpdates[f] = updates[f] === '' ? null : parseFloat(updates[f]);
+      }
+    });
+
+    // Handle date fields
+    const dateFields = [
+      'startDate', 'renewalDate', 'baselineStartDate'
+    ];
+    dateFields.forEach(f => {
+      if (updates[f] !== undefined) {
+        dbUpdates[f] = updates[f] === '' ? null : updates[f];
+      }
+    });
+
+    // Handle baseline fields that are text
+    const textFields = [
+      'fbPageUrl', 'igHandle', 'baselineTopPosts', 'baselineDemographics'
+    ];
+    textFields.forEach(f => {
+      if (updates[f] !== undefined) {
+        dbUpdates[f] = updates[f];
+      }
+    });
+
+    // Label mappings for audit history log in change_log_history
+    const BRIEF_FIELDS = {
+      name: "Organisation Name",
+      logo: "Workspace Logo (Emoji)",
+      website: "Website URL",
+      country: "Country Base",
+      sector: "Sector Focus",
+      primaryContact: "Primary Contact Name",
+      email: "Contact Email",
+      phone: "Contact Phone Number",
+      monthlyFee: "Monthly Fee (£)",
+      contractValue: "Contract Value (£)",
+      startDate: "Contract Start Date",
+      renewalDate: "Contract End/Renewal Date",
+      clientStatus: "Contract Status",
+      goalsAchieve: "What client wants to achieve",
+      goalsProblem: "Problem client is solving",
+      goalsTop3: "Top 3 communication goals",
+      goalsSuccess: "What success looks like",
+      goalsChallenges: "Biggest challenges",
+      goalsSupport: "IK support expected",
+      mission: "Mission Statement",
+      shortDesc: "Short Organisation Description",
+      toneOfVoice: "Tone of Voice",
+      writingStyle: "Writing Style",
+      wordsToUse: "Words to Use",
+      wordsToAvoid: "Words to Avoid",
+      brandColours: "Brand Colours",
+      fonts: "Fonts",
+      approvedHashtags: "Approved Hashtags",
+      socialHandles: "Social Handles",
+      canvaTemplates: "Canva Templates Link",
+      posterExamples: "Example Posts Upload / Description",
+      targetReach: "Main Target Audience",
+      audienceCommunity: "Community Audience",
+      audienceDonor: "Donor Audience",
+      audienceGovernment: "Government/Policy Audience",
+      audienceYouth: "Youth Audience",
+      audienceMedia: "Media Audience",
+      locations: "Geographic Locations",
+      ageGroups: "Age Groups",
+      languages: "Languages Required",
+      culturalConsiderations: "Cultural Considerations",
+      audienceUnderstanding: "What audience must understand",
+      audienceAction: "What action audience should take",
+      currentFunders: "Current Funders",
+      grantNames: "Grant Names",
+      reportingDeadlines: "Reporting Deadlines",
+      requiredDonorOutputs: "Required Donor Outputs",
+      donorLogoRequirements: "Donor Logo Rules",
+      funderCommunicationRules: "Funder Communication Rules",
+      requiredImpactMetrics: "Required Impact Metrics",
+      requiredEvidence: "Evidence Required by Funders",
+      reportFrequency: "Report Frequency",
+      fbPageUrl: "Facebook Page URL",
+      fbFollowers: "Facebook Followers",
+      fbAvgReach: "Facebook Average Reach",
+      fbAvgEngagement: "Facebook Average Engagement Rate (%)",
+      igHandle: "Instagram Handle",
+      igFollowers: "Instagram Followers",
+      igAvgReach: "Instagram Average Reach",
+      igAvgEngagement: "Instagram Average Engagement Rate (%)",
+      baselineTopPosts: "Top Social Media Posts",
+      baselineDemographics: "Audience Demographics",
+      baselineStartDate: "Baseline Start Date"
+    };
+
+    // Perform database updates
     await db('client_workspaces').where({ id: req.params.id }).update(dbUpdates);
+
+    // Calculate differences and log each modified field to change_log_history
+    const reason = updates.reason || 'Direct profile edit (Brief not yet approved)';
+    const changedBy = req.user.name || 'Admin';
+    const changedAt = new Date().toISOString();
+
+    for (const field of Object.keys(dbUpdates)) {
+      let oldVal = client[field];
+      let newVal = dbUpdates[field];
+
+      if (oldVal === undefined || oldVal === null) oldVal = '';
+      if (newVal === undefined || newVal === null) newVal = '';
+
+      if (String(oldVal).trim() !== String(newVal).trim()) {
+        await db('change_log_history').insert({
+          id: 'hist-' + Math.floor(Math.random() * 10000000),
+          clientId: req.params.id,
+          meetingId: null,
+          field: field,
+          label: BRIEF_FIELDS[field] || field,
+          oldValue: String(oldVal),
+          newValue: String(newVal),
+          reason: reason,
+          approvedBy: changedBy,
+          approvedAt: changedAt
+        });
+      }
+    }
     
     if (dbUpdates.isBriefApproved !== undefined) {
       const act = dbUpdates.isBriefApproved ? 'BRIEF_APPROVAL' : 'BRIEF_UNAPPROVAL';
       await logAudit(req.user.id, act, req.params.id, req.params.id, `Brief approved status set to ${dbUpdates.isBriefApproved}.`, req);
     } else {
-      await logAudit(req.user.id, 'BRIEF_UPDATE', req.params.id, req.params.id, `Brief details updated by user.`, req);
+      await logAudit(req.user.id, 'BRIEF_UPDATE', req.params.id, req.params.id, `Brief details updated by admin.`, req);
     }
 
     res.json({ message: 'Client brief updated successfully.' });
@@ -647,7 +774,7 @@ app.put('/api/ai-outputs/:id/status', authenticateToken, async (req, res) => {
 // PROPOSED SHIFTS & TRANSACTIONAL VERSION CONTROL
 // ----------------------------------------------------
 
-app.post('/api/clients/:id/change-logs/propose', authenticateToken, async (req, res) => {
+app.post('/api/clients/:id/change-logs/propose', authenticateToken, requireAdmin, checkClientAccess, async (req, res) => {
   const { meetingId, changes = [] } = req.body;
   const mId = meetingId || req.body.meeting_id;
   
@@ -816,7 +943,7 @@ app.get('/api/clients/:id/campaigns', authenticateToken, checkClientAccess, asyn
   }
 });
 
-app.post('/api/clients/:id/campaigns', authenticateToken, checkClientAccess, async (req, res) => {
+app.post('/api/clients/:id/campaigns', authenticateToken, requireAdmin, checkClientAccess, async (req, res) => {
   const c = req.body;
   if (!c.name) {
     return res.status(400).json({ message: 'Campaign Name is required.' });
@@ -841,6 +968,64 @@ app.post('/api/clients/:id/campaigns', authenticateToken, checkClientAccess, asy
     };
     await db('campaigns').insert(newCamp);
     res.status(201).json(newCamp);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/campaigns/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { name, goal, description, priority, startDate, endDate, targetPlatforms, monthlyContentTarget, mainMessage, callToAction, projectLead, relatedFunder, status } = req.body;
+    const item = await db('campaigns').where({ id: req.params.id }).first();
+    if (!item) {
+      return res.status(404).json({ message: 'Campaign not found.' });
+    }
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (goal !== undefined) updates.goal = goal;
+    if (description !== undefined) updates.description = description;
+    if (priority !== undefined) updates.priority = priority;
+    if (startDate !== undefined) updates.startDate = startDate === '' ? null : startDate;
+    if (endDate !== undefined) updates.endDate = endDate === '' ? null : endDate;
+    if (targetPlatforms !== undefined) updates.targetPlatforms = targetPlatforms;
+    if (monthlyContentTarget !== undefined) updates.monthlyContentTarget = monthlyContentTarget;
+    if (mainMessage !== undefined) updates.mainMessage = mainMessage;
+    if (callToAction !== undefined) updates.callToAction = callToAction;
+    if (projectLead !== undefined) updates.projectLead = projectLead;
+    if (relatedFunder !== undefined) updates.relatedFunder = relatedFunder;
+    if (status !== undefined) updates.status = status;
+
+    updates.updated_at = new Date().toISOString();
+
+    await db('campaigns').where({ id: req.params.id }).update(updates);
+    await logAudit(req.user.id, 'CAMPAIGN_UPDATE', item.clientId, item.id, `Updated campaign "${name || item.name}".`, req);
+    res.json({ message: 'Campaign updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/campaigns/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const item = await db('campaigns').where({ id: req.params.id }).first();
+    if (!item) {
+      return res.status(404).json({ message: 'Campaign not found.' });
+    }
+
+    const hasOutputs = await db('ai_outputs').where({ campaignId: req.params.id }).first();
+    const hasEvidence = await db('evidence').where({ campaignId: req.params.id }).first();
+    const hasMeetings = await db('meetings').where({ campaignId: req.params.id }).first();
+    const hasRequests = await db('content_requests').where({ campaignId: req.params.id }).first();
+
+    if (hasOutputs || hasEvidence || hasMeetings || hasRequests) {
+      await db('campaigns').where({ id: req.params.id }).update({ status: 'Archived' });
+      await logAudit(req.user.id, 'CAMPAIGN_ARCHIVE', item.clientId, item.id, `Archived campaign "${item.name}" due to linked records.`, req);
+      return res.json({ archived: true, message: 'Campaign has linked records and has been archived instead of deleted.' });
+    }
+
+    await db('campaigns').where({ id: req.params.id }).del();
+    await logAudit(req.user.id, 'CAMPAIGN_DELETION', item.clientId, item.id, `Deleted campaign "${item.name}".`, req);
+    res.json({ message: 'Campaign deleted successfully.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
