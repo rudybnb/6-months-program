@@ -284,9 +284,7 @@ export const state = {
   ],
 
   // Tasks (Today's Priorities)
-  tasks: [
-    { id: 'tsk1', name: 'Review groundWork Sensor Brief', client: 'groundwork-demo', client_id: 'groundwork-demo', priority: 'High', dueDate: 'Today', status: 'Pending' }
-  ],
+  tasks: [],
 
   // Content Module Pipeline
   content: [],
@@ -793,6 +791,12 @@ export async function loadClientWorkspaceData(clientId) {
       state.awarenessDays = await awRes.json();
     }
 
+    // Fetch tasks from database
+    const tasksRes = await authFetch(`${API_BASE}/api/clients/${clientId}/tasks`);
+    if (tasksRes.ok) {
+      state.tasks = await tasksRes.json();
+    }
+
     // Map database-backed ai_outputs to state.content for Kanban Board
     state.content = state.aiOutputs.map(o => {
       const camp = state.campaigns.find(cmp => cmp.id === o.campaignId);
@@ -816,6 +820,34 @@ export async function loadClientWorkspaceData(clientId) {
     notify();
   } catch (err) {
     console.error('Failed to load client workspace data from backend:', err);
+  }
+}
+
+export async function updateTaskStatus(taskId, status) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Failed to update task status:', err);
+  }
+}
+
+export async function generateInitialDeliveryPlan(clientId) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${clientId}/tasks/generate-initial`, {
+      method: 'POST'
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(clientId);
+    }
+  } catch (err) {
+    console.error('Failed to generate initial delivery plan:', err);
   }
 }
 

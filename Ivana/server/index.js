@@ -1204,6 +1204,206 @@ app.put('/api/ai-outputs/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ----------------------------------------------------
+// CLIENT WORKSPACE TASKS & SYSTEM DELIVERY PLANS
+// ----------------------------------------------------
+
+app.get('/api/clients/:id/tasks', authenticateToken, checkClientAccess, async (req, res) => {
+  try {
+    const data = await db('tasks').where({ clientId: req.params.id }).orderBy('created_at', 'asc');
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/clients/:id/tasks', authenticateToken, requireAdmin, checkClientAccess, async (req, res) => {
+  const t = req.body;
+  if (!t.name || !t.responsibleAgent) {
+    return res.status(400).json({ message: 'Task Name and Responsible Agent are required.' });
+  }
+  try {
+    const newTask = {
+      id: t.id || 'tsk_' + Math.floor(Math.random() * 10000000),
+      clientId: req.params.id,
+      campaignId: t.campaignId || null,
+      name: t.name,
+      requiredEvidence: t.requiredEvidence || null,
+      responsibleAgent: t.responsibleAgent,
+      status: t.status || 'Pending',
+      priority: t.priority || 'Medium',
+      dueDate: t.dueDate || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    await db('tasks').insert(newTask);
+    res.status(201).json(newTask);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
+  try {
+    const item = await db('tasks').where({ id: req.params.id }).first();
+    if (!item) {
+      return res.status(404).json({ message: 'Task not found.' });
+    }
+    const updates = {};
+    if (req.body.name !== undefined) updates.name = req.body.name;
+    if (req.body.status !== undefined) updates.status = req.body.status;
+    if (req.body.priority !== undefined) updates.priority = req.body.priority;
+    if (req.body.dueDate !== undefined) updates.dueDate = req.body.dueDate;
+    if (req.body.requiredEvidence !== undefined) updates.requiredEvidence = req.body.requiredEvidence;
+    if (req.body.campaignId !== undefined) updates.campaignId = req.body.campaignId;
+
+    updates.updated_at = new Date().toISOString();
+
+    await db('tasks').where({ id: req.params.id }).update(updates);
+    res.json({ message: 'Task updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/tasks/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const item = await db('tasks').where({ id: req.params.id }).first();
+    if (!item) {
+      return res.status(404).json({ message: 'Task not found.' });
+    }
+    await db('tasks').where({ id: req.params.id }).del();
+    res.json({ message: 'Task deleted successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/clients/:id/tasks/generate-initial', authenticateToken, requireAdmin, checkClientAccess, async (req, res) => {
+  try {
+    const clientId = req.params.id;
+    const client = await db('client_workspaces').where({ id: clientId }).first();
+    if (!client) {
+      return res.status(404).json({ message: 'Client workspace not found.' });
+    }
+    if (!client.isBriefApproved) {
+      return res.status(400).json({ message: 'Client brief is not approved yet.' });
+    }
+
+    // Delete existing generated tasks to prevent duplication
+    await db('tasks').where({ clientId }).del();
+
+    const campaigns = await db('campaigns').where({ clientId });
+    const firstCamp = campaigns[0] || null;
+    const firstCampId = firstCamp ? firstCamp.id : null;
+
+    const evidence = await db('evidence').where({ clientId });
+    const firstEv = evidence[0] || null;
+    const firstEvName = firstEv ? firstEv.name : 'Not yet provided';
+
+    const initialTasks = [
+      {
+        id: 'tsk_gen_1_' + Math.floor(Math.random() * 1000000),
+        clientId,
+        campaignId: firstCampId,
+        name: `Storytelling: Draft community narrative highlighting ${client.goalsProblem || 'local environmental challenges'}.`,
+        requiredEvidence: firstEvName,
+        responsibleAgent: 'storytelling',
+        status: 'Pending',
+        priority: 'High',
+        dueDate: 'Next Week',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: 'tsk_gen_2_' + Math.floor(Math.random() * 1000000),
+        clientId,
+        campaignId: firstCampId,
+        name: `Social Media: Compose Facebook and Instagram announcements based on ${client.goalsAchieve || 'active goals'}.`,
+        requiredEvidence: firstEvName,
+        responsibleAgent: 'socialmedia',
+        status: 'Pending',
+        priority: 'High',
+        dueDate: 'Next Week',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: 'tsk_gen_3_' + Math.floor(Math.random() * 1000000),
+        clientId,
+        campaignId: firstCampId,
+        name: `Canva Poster Brief: Create graphic design outline targeting ${client.targetReach || 'the general community'}.`,
+        requiredEvidence: 'Not yet provided',
+        responsibleAgent: 'canva-brief',
+        status: 'Pending',
+        priority: 'Medium',
+        dueDate: 'Next Week',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: 'tsk_gen_4_' + Math.floor(Math.random() * 1000000),
+        clientId,
+        campaignId: firstCampId,
+        name: `Content Calendar: Schedule monthly posting slots matching renewal date ${client.renewalDate || 'Not yet provided'}.`,
+        requiredEvidence: 'Not yet provided',
+        responsibleAgent: 'calendar',
+        status: 'Pending',
+        priority: 'Low',
+        dueDate: 'Next Month',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: 'tsk_gen_5_' + Math.floor(Math.random() * 1000000),
+        clientId,
+        campaignId: firstCampId,
+        name: `Donor Reporting: Compile progress report for funder ${client.currentFunders || 'Not yet provided'}.`,
+        requiredEvidence: firstEvName,
+        responsibleAgent: 'reporting',
+        status: 'Pending',
+        priority: 'High',
+        dueDate: 'Next Week',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: 'tsk_gen_6_' + Math.floor(Math.random() * 1000000),
+        clientId,
+        campaignId: null,
+        name: `Analytics: Analyze monthly reach against baseline followers (${((client.fbFollowers || 0) + (client.igFollowers || 0)) || 'Not yet provided'} total).`,
+        requiredEvidence: 'Not yet provided',
+        responsibleAgent: 'analytics',
+        status: 'Pending',
+        priority: 'Medium',
+        dueDate: 'Next Week',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: 'tsk_gen_7_' + Math.floor(Math.random() * 1000000),
+        clientId,
+        campaignId: firstCampId,
+        name: `Funding Comm: Prepare advisory newsletter for grant ${client.grantNames || 'Not yet provided'}.`,
+        requiredEvidence: 'Not yet provided',
+        responsibleAgent: 'funding-comm',
+        status: 'Pending',
+        priority: 'High',
+        dueDate: 'Next Week',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+    ];
+
+    await db('tasks').insert(initialTasks);
+    await logAudit(req.user.id, 'WORKSPACE_INITIAL_PLAN_GENERATION', clientId, clientId, `Generated initial delivery plan tasks.`, req);
+
+    res.status(201).json(initialTasks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Serve SPA frontend index.html fallback for client-side routing
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) {

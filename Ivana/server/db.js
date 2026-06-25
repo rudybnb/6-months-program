@@ -449,6 +449,22 @@ export async function initDb() {
     }
   }
 
+  // Tasks table
+  if (!await db.schema.hasTable('tasks')) {
+    await db.schema.createTable('tasks', table => {
+      table.string('id').primary();
+      table.string('clientId').references('id').inTable('client_workspaces').onDelete('CASCADE');
+      table.string('campaignId').references('id').inTable('campaigns').onDelete('SET NULL');
+      table.string('name').notNullable();
+      table.string('requiredEvidence').nullable();
+      table.string('responsibleAgent').notNullable();
+      table.string('status').defaultTo('Pending');
+      table.string('priority').defaultTo('Medium');
+      table.string('dueDate').nullable();
+      table.timestamps(true, true);
+    });
+  }
+
   console.log('Database tables setup successfully.');
   await seedInitialData();
 }
@@ -772,6 +788,25 @@ async function seedInitialData() {
         clientId: 'groundwork-demo'
       });
     }
+  }
+
+  // Seed initial tasks for groundwork-demo
+  const taskExists = await db('tasks').where({ clientId: 'groundwork-demo' }).first();
+  if (!taskExists) {
+    console.log('Seeding initial tasks for groundwork-demo...');
+    await db('tasks').insert([
+      {
+        id: 'tsk_init_1',
+        clientId: 'groundwork-demo',
+        campaignId: 'cmp1',
+        name: 'Review groundWork Sensor Brief & Vaal Air Workshop',
+        requiredEvidence: 'Durban South Air Quality Audit 2025.pdf',
+        responsibleAgent: 'storytelling',
+        status: 'Pending',
+        priority: 'High',
+        dueDate: 'Today'
+      }
+    ]);
   }
 
   console.log('Seed data successfully written to database.');

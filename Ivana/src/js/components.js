@@ -31,7 +31,9 @@ import {
   addContentRequest,
   updateContentRequestStatus,
   addMediaAsset,
-  updateContentDetails
+  updateContentDetails,
+  updateTaskStatus,
+  generateInitialDeliveryPlan
 } from './state.js';
 
 import { renderLineChart, renderBarChart } from './chart.js';
@@ -398,9 +400,9 @@ export function renderClientDashboard(container) {
     `;
     return;
   }
-  const clientCampaigns = state.campaigns.filter(c => c.client === client.id);
-  const clientReports = state.reports.filter(r => r.client === client.id);
-  const clientContent = state.content.filter(c => c.client === client.id);
+  const clientCampaigns = state.campaigns.filter(c => c.clientId === client.id || c.client === client.id);
+  const clientReports = state.reports.filter(r => r.clientId === client.id || r.client === client.id);
+  const clientContent = state.content.filter(c => c.clientId === client.id || c.client === client.id);
   const clientFunding = state.fundingOpportunities.filter(f => f.country === client.country || f.sector.includes(client.sector.split(' ')[0]));
   const metrics = state.impactMetrics[client.id] || { peopleReached: 0, campaignReach: 0, reportsSubmitted: 0, fundingSecured: 0 };
 
@@ -810,6 +812,424 @@ export function renderClientsModule(container) {
   }
 }
 
+function renderOnboardingChecklistHtml(client) {
+  const comp = calculateBriefCompletion(client);
+  const sections = {
+    ngoProfile: 'Organisation Details',
+    brandIdentity: 'Brand & Voice',
+    targetAudience: 'Target Audience',
+    campaignInfo: 'Campaigns/Projects',
+    donorInfo: 'Funders/Reporting Needs'
+  };
+
+  return `
+    <div style="background:#fffbeb; border:1px solid #fef3c7; padding:1.5rem; border-radius:12px; margin-bottom:1.5rem; color:#b45309;">
+      <h3 style="margin:0 0 0.5rem 0; font-size:1.1rem; display:flex; align-items:center; gap:0.5rem; color:#b45309; text-transform:none;">
+        ⚠️ Client Brief Pending Approval
+      </h3>
+      <p style="margin:0; font-size:0.85rem; line-height:1.5; color:#78350f;">
+        The client workspace is currently locked. To unlock the Client Delivery Plan and activate the specialized AI agents, please complete the client profile brief and approve it.
+      </p>
+    </div>
+
+    <div class="card p-5" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
+        <h4 style="margin:0; font-size:1.05rem; font-weight:700; color:#0f172a; text-transform:none;">📋 Onboarding Progress Checklist</h4>
+        <span style="font-size:0.9rem; font-weight:700; background:#e0f2fe; color:#0369a1; padding:0.25rem 0.6rem; border-radius:6px;">${comp.score}% Complete</span>
+      </div>
+
+      <div class="progress-bar-container" style="background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden; margin-bottom:1.5rem;">
+        <div class="progress-bar" style="width:${comp.score}%; height:100%; background:#3b82f6;"></div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:1.25rem;">
+        ${Object.keys(sections).map(secKey => {
+          const sectionTitle = sections[secKey];
+          const missingFields = comp.missing[secKey] || [];
+          const isDone = missingFields.length === 0;
+
+          return `
+            <div style="background:#faf5ff; border:1px solid #f3e8ff; border-radius:10px; padding:1rem; border-top: 4px solid ${isDone ? '#10b981' : '#a855f7'};">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                <strong style="font-size:0.85rem; color:#1e1b4b;">${sectionTitle}</strong>
+                <span>${isDone ? '✅' : '⏳'}</span>
+              </div>
+              ${isDone ? `
+                <div style="font-size:0.75rem; color:#059669; font-weight:500; margin-top:0.5rem;">All fields completed!</div>
+              ` : `
+                <ul style="padding-left:1.1rem; margin:0.5rem 0 0 0; font-size:0.75rem; color:#581c87; line-height:1.4;">
+                  ${missingFields.map(f => `<li>${f}</li>`).join('')}
+                </ul>
+              `}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, clientTasks, metrics) {
+  const comp = calculateBriefCompletion(client);
+  const allMissing = [];
+  for (const key in comp.missing) {
+    comp.missing[key].forEach(f => allMissing.push(f));
+  }
+
+  const clientContent = state.content.filter(c => c.client === client.id);
+  const clientReports = state.reports.filter(r => r.client === client.id);
+
+  const hasEvidence = clientEvidence.length > 0;
+  const hasContent = clientContent.length > 0 || clientReports.length > 0;
+  const hasReview = clientContent.some(c => c.approvalStatus === 'Internal Review') || clientReports.some(r => r.status === 'Pending Review');
+  const hasApprove = clientContent.some(c => c.approvalStatus === 'Client Approved' || c.approvalStatus === 'Sent to Client') || clientReports.some(r => r.status === 'Sent to Client');
+  const hasPublish = clientContent.some(c => c.status === 'Published') || clientReports.some(r => r.status === 'Submitted');
+
+  const stepperHtml = `
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1.25rem; border-radius:12px; margin-bottom:1.5rem;">
+      <h5 style="margin:0 0 0.75rem 0; font-size:0.85rem; font-weight:700; color:#334155; text-transform:none; text-align:center;">📋 Workspace Workflow Status</h5>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; font-size:0.75rem;">
+        
+        <div style="display:flex; align-items:center; gap:0.25rem; color:#15803d; font-weight:600;">
+          <span style="background:#dcfce7; border:2px solid #15803d; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">✓</span>
+          <span>Brief Approved</span>
+        </div>
+        <div style="color:#64748b;">➔</div>
+
+        <div style="display:flex; align-items:center; gap:0.25rem; color:${hasEvidence ? '#15803d' : '#64748b'}; font-weight:${hasEvidence ? '600' : 'normal'};">
+          <span style="background:${hasEvidence ? '#dcfce7' : 'white'}; border:2px solid ${hasEvidence ? '#15803d' : '#cbd5e1'}; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">${hasEvidence ? '✓' : '2'}</span>
+          <span>Upload Evidence</span>
+        </div>
+        <div style="color:#64748b;">➔</div>
+
+        <div style="display:flex; align-items:center; gap:0.25rem; color:${hasContent ? '#15803d' : '#64748b'}; font-weight:${hasContent ? '600' : 'normal'};">
+          <span style="background:${hasContent ? '#dcfce7' : 'white'}; border:2px solid ${hasContent ? '#15803d' : '#cbd5e1'}; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">${hasContent ? '✓' : '3'}</span>
+          <span>Generate Content/Calendar/Report</span>
+        </div>
+        <div style="color:#64748b;">➔</div>
+
+        <div style="display:flex; align-items:center; gap:0.25rem; color:${hasReview ? '#15803d' : '#64748b'}; font-weight:${hasReview ? '600' : 'normal'};">
+          <span style="background:${hasReview ? '#dcfce7' : 'white'}; border:2px solid ${hasReview ? '#15803d' : '#cbd5e1'}; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">${hasReview ? '✓' : '4'}</span>
+          <span>Review</span>
+        </div>
+        <div style="color:#64748b;">➔</div>
+
+        <div style="display:flex; align-items:center; gap:0.25rem; color:${hasApprove ? '#15803d' : '#64748b'}; font-weight:${hasApprove ? '600' : 'normal'};">
+          <span style="background:${hasApprove ? '#dcfce7' : 'white'}; border:2px solid ${hasApprove ? '#15803d' : '#cbd5e1'}; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">${hasApprove ? '✓' : '5'}</span>
+          <span>Approve</span>
+        </div>
+        <div style="color:#64748b;">➔</div>
+
+        <div style="display:flex; align-items:center; gap:0.25rem; color:${hasPublish ? '#15803d' : '#64748b'}; font-weight:${hasPublish ? '600' : 'normal'};">
+          <span style="background:${hasPublish ? '#dcfce7' : 'white'}; border:2px solid ${hasPublish ? '#15803d' : '#cbd5e1'}; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">${hasPublish ? '✓' : '6'}</span>
+          <span>Publish/Report</span>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  const pendingTask = clientTasks.find(t => t.status === 'Pending');
+  const nextRecommendedAction = pendingTask 
+    ? `Run AI agents on <strong>${pendingTask.name}</strong>.` 
+    : 'All current recommended tasks completed! You are ready to review and publish content drafts.';
+
+  return `
+    <h3 style="font-size:1.15rem; font-weight:700; color:#0f172a; margin-top:0; display:flex; align-items:center; gap:0.5rem; text-transform:none;">
+      📋 Client Delivery Plan Dashboard
+    </h3>
+    
+    ${stepperHtml}
+
+    <div style="display:grid; grid-template-columns: 2fr 1.2fr; gap:1.5rem; align-items:start;">
+      
+      <!-- Left Column -->
+      <div>
+        
+        <!-- Next Recommended Action Alert -->
+        <div style="background:#e0f2fe; border:1px solid #bae6fd; padding:1rem; border-radius:10px; color:#0369a1; margin-bottom:1.5rem; font-size:0.8rem;">
+          <div style="font-weight:700; display:flex; align-items:center; gap:0.4rem; font-size:0.85rem;">
+            <span>💡</span> Next Recommended Action:
+          </div>
+          <div style="margin-top:0.25rem; line-height:1.4;">${nextRecommendedAction}</div>
+        </div>
+
+        <!-- Real Database Agent Tasks Section -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+          <h4 style="margin:0 0 1rem 0; font-size:0.95rem; font-weight:700; color:#0f172a; text-transform:none;">🤖 Active Agent Task List</h4>
+          <div class="task-list-container" style="display:flex; flex-direction:column; gap:0.75rem;">
+            ${clientTasks.map(t => {
+              const isCompleted = t.status === 'Completed';
+              const camp = state.campaigns.find(c => c.id === t.campaignId);
+              const campName = camp ? camp.name : 'General';
+              return `
+                <div class="task-item-row" style="display:flex; align-items:flex-start; gap:0.75rem; background:#f8fafc; border:1px solid ${isCompleted ? '#e2e8f0' : '#cbd5e1'}; padding:0.85rem; border-radius:8px; opacity:${isCompleted ? 0.7 : 1};">
+                  <input type="checkbox" class="task-checkbox" data-task-id="${t.id}" ${isCompleted ? 'checked' : ''} style="margin-top:0.25rem; width:1.05rem; height:1.05rem; cursor:pointer;" />
+                  <div style="flex-grow:1; font-size:0.8rem; line-height:1.4;">
+                    <div style="font-weight:600; color:${isCompleted ? '#64748b' : '#0f172a'}; text-decoration:${isCompleted ? 'line-through' : 'none'};">${t.name}</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.4rem; font-size:0.68rem; color:#64748b;">
+                      <span style="background:#f1f5f9; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600;">🤖 ${getAgentNameById(t.responsibleAgent)}</span>
+                      ${t.campaignId ? `<span style="background:#e0f2fe; color:#0369a1; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600;">🎯 Campaign: ${campName}</span>` : ''}
+                      <span style="background:#fee2e2; color:#991b1b; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600;">📋 Evidence: ${t.requiredEvidence || 'Not yet provided'}</span>
+                      ${t.dueDate ? `<span style="background:#fef3c7; color:#78350f; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600;">⏰ Due: ${t.dueDate}</span>` : ''}
+                      <span style="background:${t.priority === 'High' ? '#fee2e2; color:#991b1b;' : (t.priority === 'Medium' ? '#fef3c7; color:#78350f;' : '#f0fdf4; color:#166534;')}; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600; text-transform:uppercase;">${t.priority || 'Medium'}</span>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Suggested Calendar & Report Structure Section -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+          
+          <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+            <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">📅 Suggested Content Calendar</h4>
+            <div style="font-size:0.75rem; color:#475569; line-height:1.5;">
+              <div style="border-bottom:1px solid #f1f5f9; padding-bottom:0.5rem; margin-bottom:0.5rem;">
+                <strong style="color:#0f172a;">Weekly Theme:</strong> ${client.campaignName ? `${client.campaignName} Launch & Community Voice` : 'Not yet provided'}
+              </div>
+              <div style="margin-bottom:0.4rem;">
+                🔵 <strong>Post 1 (Mon)</strong>: Focus on goals problem statement:<br/>
+                <span style="color:#64748b;">"${client.goalsProblem || 'Not yet provided'}"</span>
+              </div>
+              <div style="margin-bottom:0.4rem;">
+                🔵 <strong>Post 2 (Wed)</strong>: Evidence highlight post:<br/>
+                <span style="color:#64748b;">"${client.requiredEvidence || 'Not yet provided'}"</span>
+              </div>
+              <div>
+                🔵 <strong>Post 3 (Fri)</strong>: Campaign Call to Action:<br/>
+                <span style="color:#64748b;">"${client.campaignCta || 'Not yet provided'}"</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+            <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">📊 Suggested Social Media Report Structure</h4>
+            <div style="font-size:0.75rem; color:#475569; line-height:1.5;">
+              <ol style="padding-left:1.1rem; margin:0;">
+                <li style="margin-bottom:0.3rem;"><strong>Cover Page</strong>: Logo (${client.logo || 'Not yet provided'}), Period</li>
+                <li style="margin-bottom:0.3rem;"><strong>Executive Summary</strong>: Metrics growth overview</li>
+                <li style="margin-bottom:0.3rem;"><strong>Client Context & Campaign Goals</strong>: Focus on ${client.campaignName || 'Not yet provided'}</li>
+                <li style="margin-bottom:0.3rem;"><strong>Verified Evidence & Narrative highlights</strong>: School installs/surveys</li>
+                <li><strong>Opportunities & Funder Alignment</strong>: Matching ${client.grantNames || 'Not yet provided'}</li>
+              </ol>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- AI Specialist Readiness Matrix -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+          <h4 style="margin:0 0 1rem 0; font-size:0.95rem; font-weight:700; color:#0f172a; text-transform:none;">🤖 AI Specialist Agent Capabilities & Readiness Grid</h4>
+          <div style="display:flex; flex-direction:column; gap:0.75rem;">
+            ${state.agents.map(a => {
+              let readyText = '';
+              let waitingText = 'None - Ready to run!';
+              let isReady = true;
+
+              if (a.id === 'storytelling') {
+                readyText = `Draft community narrative based on problem statement: "${client.goalsProblem || 'Not yet provided'}".`;
+                if (!client.toneOfVoice || !client.mission) {
+                  isReady = false;
+                  waitingText = `Awaiting: Tone of Voice, Mission details.`;
+                }
+              } else if (a.id === 'socialmedia') {
+                readyText = `Draft platforms updates for: "${client.contentPlatforms || 'Not yet provided'}".`;
+                if (!client.socialHandles || !client.approvedHashtags) {
+                  isReady = false;
+                  waitingText = `Awaiting: Social handles, Approved hashtags.`;
+                }
+              } else if (a.id === 'canva-brief') {
+                readyText = `Outline Canva design specifications matching style: "${client.writingStyle || 'Not yet provided'}".`;
+                if (!client.fonts || !client.brandColours) {
+                  isReady = false;
+                  waitingText = `Awaiting: Brand fonts, Brand colours.`;
+                }
+              } else if (a.id === 'calendar') {
+                readyText = `Plan posting calendar targeting campaign: "${client.campaignName || 'Not yet provided'}".`;
+                if (!client.campaignFrequency || !client.renewalDate) {
+                  isReady = false;
+                  waitingText = `Awaiting: Campaign frequency, Renewal date.`;
+                }
+              } else if (a.id === 'reporting') {
+                readyText = `Prepare donor report for: "${client.currentFunders || 'Not yet provided'}".`;
+                if (!client.requiredImpactMetrics || !client.reportingDeadlines) {
+                  isReady = false;
+                  waitingText = `Awaiting: Required impact metrics, Reporting deadlines.`;
+                }
+              } else if (a.id === 'analytics') {
+                readyText = `Analyze reach metrics against baseline followers: ${((client.fbFollowers || 0) + (client.igFollowers || 0)) || 'Not yet provided'}.`;
+                if (!client.fbPageUrl || !client.igHandle) {
+                  isReady = false;
+                  waitingText = `Awaiting: Facebook URL, Instagram handle.`;
+                }
+              } else if (a.id === 'funding-comm') {
+                readyText = `Draft donor updates matching funding opportunity: "${client.grantNames || 'Not yet provided'}".`;
+                if (!client.grantNames || !client.requiredEvidence) {
+                  isReady = false;
+                  waitingText = `Awaiting: Grant names, Required evidence.`;
+                }
+              }
+
+              return `
+                <div style="background:#faf5ff; border:1px solid #e9d5ff; border-left:4px solid ${isReady ? '#10b981' : '#a855f7'}; padding:0.75rem; border-radius:8px; font-size:0.75rem; display:grid; grid-template-columns: 1fr 1.5fr 1fr; gap:0.5rem;">
+                  <div><strong style="color:#581c87;">🤖 ${a.name}</strong></div>
+                  <div><span style="color:#4b5563;">🚀 Ready: ${readyText}</span></div>
+                  <div><span style="color:${isReady ? '#059669' : '#b45309'}; font-weight:600;">⏳ Wait: ${waitingText}</span></div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Column -->
+      <div>
+        
+        <!-- Approved Client Goals -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+          <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">🎯 Approved Client Goals</h4>
+          <div style="font-size:0.75rem; color:#475569; display:flex; flex-direction:column; gap:0.6rem; line-height:1.4;">
+            <div>
+              <span style="font-weight:600; color:#0f172a; display:block;">What they want to achieve:</span>
+              <span>${client.goalsAchieve || 'Not yet provided'}</span>
+            </div>
+            <div>
+              <span style="font-weight:600; color:#0f172a; display:block;">Target Problem:</span>
+              <span>${client.goalsProblem || 'Not yet provided'}</span>
+            </div>
+            <div>
+              <span style="font-weight:600; color:#0f172a; display:block;">Sector:</span>
+              <span>${client.sector || 'Not yet provided'}</span>
+            </div>
+            <div>
+              <span style="font-weight:600; color:#0f172a; display:block;">Mission:</span>
+              <span>${client.mission || 'Not yet provided'}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Campaigns -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+          <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">📣 Active Campaigns</h4>
+          <div>
+            ${clientCampaigns.map(c => `
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:0.75rem; border-radius:8px; margin-bottom:0.5rem; font-size:0.75rem; line-height:1.4;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <strong style="color:#0f172a;">${c.name || 'Not yet provided'}</strong>
+                  <span style="background:#dcfce7; color:#166534; padding:0.15rem 0.35rem; border-radius:4px; font-weight:700; font-size:0.6rem;">${c.status || 'Active'}</span>
+                </div>
+                <div style="margin-top:0.25rem; color:#64748b;">
+                  Goal: ${c.goal || 'Not yet provided'}<br/>
+                  Budget: ${c.budget ? `£${c.budget.toLocaleString()}` : 'Not yet provided'}
+                </div>
+              </div>
+            `).join('') || `<div style="font-size:0.75rem; color:#64748b; font-style:italic;">No active campaigns.</div>`}
+          </div>
+        </div>
+
+        <!-- Connected Evidence & Documents -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+          <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">📄 Connected Evidence</h4>
+          <div style="display:flex; flex-direction:column; gap:0.5rem;">
+            ${clientEvidence.map(e => `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; padding:0.6rem; border-radius:6px; font-size:0.75rem;">
+                <div style="display:flex; align-items:center; gap:0.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;">
+                  <span>📄</span>
+                  <span style="color:#0f172a; font-weight:600;">${e.name || 'Unnamed'}</span>
+                </div>
+                <span style="background:#dcfce7; color:#15803d; font-size:0.6rem; padding:0.1rem 0.3rem; border-radius:4px; font-weight:700;">${e.verificationStatus || 'Verified'}</span>
+              </div>
+            `).join('') || `<div style="font-size:0.75rem; color:#64748b; font-style:italic;">No evidence uploads.</div>`}
+          </div>
+        </div>
+
+        <!-- Missing Info Alert -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+          <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">⚠️ Missing Profile Details</h4>
+          <div style="font-size:0.75rem; line-height:1.4;">
+            ${allMissing.length === 0 ? `
+              <div style="color:#059669; font-weight:600;">🎉 Brief is 100% complete!</div>
+            ` : `
+              <p style="color:#64748b; margin-top:0;">The following parameters are missing in the brief:</p>
+              <ul style="padding-left:1.1rem; margin:0; color:#b91c1c; font-weight:500;">
+                ${allMissing.slice(0, 10).map(m => `<li style="margin-bottom:0.25rem;">${m}</li>`).join('')}
+                ${allMissing.length > 10 ? `<li>...and ${allMissing.length - 10} more.</li>` : ''}
+              </ul>
+            `}
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- 🚀 Baseline Performance & Impact Tracking Section -->
+    <div class="card p-4 mt-6" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+      <h4 style="margin:0 0 1rem 0; font-size:0.95rem; font-weight:700; color:#0f172a; text-transform:none;">📈 Baseline Performance & Impact Tracking</h4>
+      
+      <div class="impact-grid-mini" style="margin-bottom:1.5rem;">
+        <div class="impact-stat-mini">
+          <span class="lbl">People Reached</span>
+          <span class="val">${metrics.peopleReached.toLocaleString()}</span>
+        </div>
+        <div class="impact-stat-mini">
+          <span class="lbl">Campaign Reach</span>
+          <span class="val">${metrics.campaignReach.toLocaleString()}</span>
+        </div>
+        <div class="impact-stat-mini">
+          <span class="lbl">Reports Filed</span>
+          <span class="val">${metrics.reportsSubmitted}</span>
+        </div>
+        <div class="impact-stat-mini">
+          <span class="lbl">Secured Grants</span>
+          <span class="val">£${metrics.fundingSecured.toLocaleString()}</span>
+        </div>
+      </div>
+
+      <!-- Social Media Baseline Grid -->
+      <div class="impact-grid-mini" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom:1.5rem;">
+        <div class="impact-stat-mini" style="border-left: 4px solid #1877f2; background: white;">
+          <span class="lbl" style="color:#1877f2; font-weight:700;">📘 Facebook Baseline</span>
+          <span class="val" style="font-size:0.85rem; font-weight:700; word-break: break-all; margin:0.25rem 0;">
+            ${client.fbPageUrl ? `<a href="${client.fbPageUrl}" target="_blank" style="color: #1877f2; text-decoration: underline;">View Page</a>` : 'Not Connected'}
+          </span>
+          <div style="font-size:0.7rem; color:#475569; line-height:1.4;">
+            👥 Followers: <strong>${(client.fbFollowers || 0).toLocaleString()}</strong><br/>
+            📈 Reach: <strong>${(client.fbAvgReach || 0).toLocaleString()}</strong><br/>
+            ⚡ Engagement: <strong>${client.fbAvgEngagement || 0.0}%</strong>
+          </div>
+        </div>
+        <div class="impact-stat-mini" style="border-left: 4px solid #c13584; background: white;">
+          <span class="lbl" style="color:#c13584; font-weight:700;">📸 Instagram Baseline</span>
+          <span class="val" style="font-size:0.85rem; font-weight:700; margin:0.25rem 0;">
+            ${client.igHandle || 'Not Connected'}
+          </span>
+          <div style="font-size:0.7rem; color:#475569; line-height:1.4;">
+            👥 Followers: <strong>${(client.igFollowers || 0).toLocaleString()}</strong><br/>
+            📈 Reach: <strong>${(client.igAvgReach || 0).toLocaleString()}</strong><br/>
+            ⚡ Engagement: <strong>${client.igAvgEngagement || 0.0}%</strong>
+          </div>
+        </div>
+        <div class="impact-stat-mini" style="border-left: 4px solid #10b981; background: white; grid-column: span 2;">
+          <span class="lbl" style="color:#10b981; font-weight:700;">📅 Baseline Context</span>
+          <div style="font-size:0.7rem; color:#334155; line-height:1.4; margin-top:0.25rem;">
+            📅 Start Date: <strong>${client.baselineStartDate || 'None'}</strong><br/>
+            👥 Demographics: <strong>${client.baselineDemographics || 'N/A'}</strong><br/>
+            🔥 Top Posts: <strong>${client.baselineTopPosts || 'N/A'}</strong>
+          </div>
+        </div>
+      </div>
+
+      <h4 style="margin:1rem 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">Performance Trend</h4>
+      <div id="profileTrendChart" class="chart-container mt-4"></div>
+    </div>
+  `;
+}
+
 // RENDER SINGLE CLIENT PROFILE VIEW
 function renderClientProfile(container, clientId) {
   const client = state.clients.find(c => c.id === clientId);
@@ -818,9 +1238,10 @@ function renderClientProfile(container, clientId) {
     return;
   }
 
-  const clientCampaigns = state.campaigns.filter(c => c.client === client.id);
-  const clientReports = state.reports.filter(r => r.client === client.id);
-  const clientContent = state.content.filter(c => c.client === client.id);
+  const clientCampaigns = state.campaigns.filter(c => c.clientId === client.id || c.client === client.id);
+  const clientReports = state.reports.filter(r => r.clientId === client.id || r.client === client.id);
+  const clientContent = state.content.filter(c => c.clientId === client.id || c.client === client.id);
+  const clientEvidence = state.evidence.filter(e => e.clientId === client.id || e.client === client.id);
   const clientFunding = state.fundingOpportunities.filter(f => f.country === client.country || f.sector.includes(client.sector.split(' ')[0]));
   const metrics = state.impactMetrics[client.id] || { peopleReached: 0, campaignReach: 0, reportsSubmitted: 0, fundingSecured: 0, customMetrics: [] };
 
@@ -922,75 +1343,24 @@ function renderClientProfile(container, clientId) {
         <div class="tab-body mt-4" id="profileTabBody">
           <!-- Overview Tab (Default) -->
           <div class="tab-pane active" id="tab-overview">
-            <h4>Impact Tracker</h4>
-            <div class="impact-grid-mini mt-4">
-              <div class="impact-stat-mini">
-                <span class="lbl">People Reached</span>
-                <span class="val">${metrics.peopleReached.toLocaleString()}</span>
-              </div>
-              <div class="impact-stat-mini">
-                <span class="lbl">Campaign Reach</span>
-                <span class="val">${metrics.campaignReach.toLocaleString()}</span>
-              </div>
-              <div class="impact-stat-mini">
-                <span class="lbl">Reports Filed</span>
-                <span class="val">${metrics.reportsSubmitted}</span>
-              </div>
-              <div class="impact-stat-mini">
-                <span class="lbl">Secured Grants</span>
-                <span class="val">£${metrics.fundingSecured.toLocaleString()}</span>
-              </div>
-            </div>
-            
-            ${metrics.customMetrics && metrics.customMetrics.length > 0 ? `
-              <h4 class="mt-6">NGO Custom Metrics</h4>
-              <div class="impact-grid-mini mt-4">
-                ${metrics.customMetrics.map(cm => `
-                  <div class="impact-stat-mini border-secondary">
-                    <span class="lbl">${cm.label}</span>
-                    <span class="val text-secondary">${cm.value}</span>
+            ${!client.isBriefApproved 
+              ? renderOnboardingChecklistHtml(client) 
+              : (state.tasks.filter(t => t.clientId === client.id).length === 0
+                ? `
+                  <div class="card p-6 text-center" style="background:white; border:1px solid var(--border-color); border-radius:12px; padding:3rem 2rem;">
+                    <div style="font-size:3rem; margin-bottom:1.25rem;">📋</div>
+                    <h3 style="font-size:1.4rem; font-weight:700; color:#1e293b; margin-top:0; text-transform:none;">Generate Client Delivery Plan</h3>
+                    <p style="color:#64748b; max-width:500px; margin:0 auto 1.5rem auto; font-size:0.9rem; line-height:1.5;">
+                      The client brief is approved. You can now automatically generate the initial delivery plan, which will assign database-backed tasks to the specialized AI agents based on the client's campaigns, goals, and uploaded evidence.
+                    </p>
+                    <button class="btn btn-primary" id="btnGenerateDeliveryPlan" style="background:#4f46e5; border-color:#4f46e5; font-weight:700; padding:0.6rem 1.5rem; font-size:0.9rem; border-radius:8px; color:white; border:none; cursor:pointer;">
+                      ⚡ Generate Initial Delivery Plan
+                    </button>
                   </div>
-                `).join('')}
-              </div>
-            ` : ''}
-
-            <!-- Social Media Baseline Grid -->
-            <h4 class="mt-6">📢 Social Media Starting Baseline</h4>
-            <div class="impact-grid-mini mt-4" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-              <div class="impact-stat-mini" style="border-left: 4px solid #1877f2; background: white;">
-                <span class="lbl" style="color:#1877f2; font-weight:700;">📘 Facebook Baseline</span>
-                <span class="val" style="font-size:0.85rem; font-weight:700; word-break: break-all; margin:0.25rem 0;">
-                  ${client.fbPageUrl ? `<a href="${client.fbPageUrl}" target="_blank" style="color: #1877f2; text-decoration: underline;">View Page</a>` : 'Not Connected'}
-                </span>
-                <div style="font-size:0.7rem; color:#475569; line-height:1.4;">
-                  👥 Followers: <strong>${(client.fbFollowers || 0).toLocaleString()}</strong><br/>
-                  📈 Reach: <strong>${(client.fbAvgReach || 0).toLocaleString()}</strong><br/>
-                  ⚡ Engagement: <strong>${client.fbAvgEngagement || 0.0}%</strong>
-                </div>
-              </div>
-              <div class="impact-stat-mini" style="border-left: 4px solid #c13584; background: white;">
-                <span class="lbl" style="color:#c13584; font-weight:700;">📸 Instagram Baseline</span>
-                <span class="val" style="font-size:0.85rem; font-weight:700; margin:0.25rem 0;">
-                  ${client.igHandle || 'Not Connected'}
-                </span>
-                <div style="font-size:0.7rem; color:#475569; line-height:1.4;">
-                  👥 Followers: <strong>${(client.igFollowers || 0).toLocaleString()}</strong><br/>
-                  📈 Reach: <strong>${(client.igAvgReach || 0).toLocaleString()}</strong><br/>
-                  ⚡ Engagement: <strong>${client.igAvgEngagement || 0.0}%</strong>
-                </div>
-              </div>
-              <div class="impact-stat-mini" style="border-left: 4px solid #10b981; background: white; grid-column: span 2;">
-                <span class="lbl" style="color:#10b981; font-weight:700;">📅 Baseline Context</span>
-                <div style="font-size:0.7rem; color:#334155; line-height:1.4; margin-top:0.25rem;">
-                  📅 Start Date: <strong>${client.baselineStartDate || 'None'}</strong><br/>
-                  👥 Demographics: <strong>${client.baselineDemographics || 'N/A'}</strong><br/>
-                  🔥 Top Posts: <strong>${client.baselineTopPosts || 'N/A'}</strong>
-                </div>
-              </div>
-            </div>
-
-            <h4 class="mt-6">Performance Trend</h4>
-            <div id="profileTrendChart" class="chart-container mt-4"></div>
+                `
+                : renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, state.tasks.filter(t => t.clientId === client.id), metrics)
+              )
+            }
           </div>
 
           <!-- Campaigns Tab -->
@@ -1030,63 +1400,85 @@ function renderClientProfile(container, clientId) {
           <!-- Reports Tab -->
           <div class="tab-pane" id="tab-reports">
             <h4>Reports Log</h4>
-            <div class="campaign-table-container mt-4">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Report Name</th>
-                    <th>Donor</th>
-                    <th>Due Date</th>
-                    <th>Progress</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${clientReports.map(r => `
+            ${clientReports.length === 0 ? `
+              <div class="card p-6 text-center" style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; padding:3rem 2rem; margin-top:1rem;">
+                <div style="font-size:2.5rem; margin-bottom:1rem;">📊</div>
+                <h3 style="font-size:1.1rem; color:#1e293b; margin:0 0 0.5rem 0; font-weight:700; text-transform:none;">No reports are ready yet</h3>
+                <p style="color:#64748b; font-size:0.85rem; max-width:480px; margin:0 auto 1.25rem auto; line-height:1.5;">
+                  Add social media metrics or upload performance screenshots to generate a report.
+                </p>
+                <a href="#agents" class="btn btn-sm btn-outline" style="font-weight:600; padding:0.4rem 1rem; border-radius:6px; font-size:0.8rem; text-decoration:none; display:inline-block;">Go to AI Agents Workspace</a>
+              </div>
+            ` : `
+              <div class="campaign-table-container mt-4">
+                <table>
+                  <thead>
                     <tr>
-                      <td><strong>${r.name}</strong></td>
-                      <td>${r.donor}</td>
-                      <td>${r.dueDate}</td>
-                      <td>${r.completion}%</td>
-                      <td><span class="status-badge ${r.status === 'Submitted' ? 'green' : r.status === 'Pending Review' ? 'yellow' : 'red'}">${r.status}</span></td>
+                      <th>Report Name</th>
+                      <th>Donor</th>
+                      <th>Due Date</th>
+                      <th>Progress</th>
+                      <th>Status</th>
                     </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    ${clientReports.map(r => `
+                      <tr>
+                        <td><strong>${r.name}</strong></td>
+                        <td>${r.donor}</td>
+                        <td>${r.dueDate}</td>
+                        <td>${r.completion}%</td>
+                        <td><span class="status-badge ${r.status === 'Submitted' ? 'green' : r.status === 'Pending Review' ? 'yellow' : 'red'}">${r.status}</span></td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
           </div>
 
           <!-- Content Tab -->
           <div class="tab-pane" id="tab-content">
             <h4>Content Pipeline & Assets</h4>
-            <div class="content-table-container mt-4">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Asset Title</th>
-                    <th>Platform</th>
-                    <th>Publisher</th>
-                    <th>Approval</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${clientContent.map(cnt => `
+            ${clientContent.length === 0 ? `
+              <div class="card p-6 text-center" style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; padding:3rem 2rem; margin-top:1rem;">
+                <div style="font-size:2.5rem; margin-bottom:1rem;">📝</div>
+                <h3 style="font-size:1.1rem; color:#1e293b; margin:0 0 0.5rem 0; font-weight:700; text-transform:none;">No content has been created yet</h3>
+                <p style="color:#64748b; font-size:0.85rem; max-width:480px; margin:0 auto 1.25rem auto; line-height:1.5;">
+                  Generate content from the approved client brief, campaign plan, or uploaded evidence.
+                </p>
+                <a href="#agents" class="btn btn-sm btn-outline" style="font-weight:600; padding:0.4rem 1rem; border-radius:6px; font-size:0.8rem; text-decoration:none; display:inline-block;">Go to AI Agents Workspace</a>
+              </div>
+            ` : `
+              <div class="content-table-container mt-4">
+                <table>
+                  <thead>
                     <tr>
-                      <td><strong>${cnt.title}</strong></td>
-                      <td><span class="platform-badge">${cnt.platform}</span></td>
-                      <td>${cnt.author}</td>
-                      <td>
-                        <span class="status-badge ${cnt.approvalStatus === 'Approved' ? 'green' : 'yellow'}">
-                          ${cnt.approvalStatus}
-                        </span>
-                      </td>
-                      <td><strong>${cnt.status}</strong></td>
+                      <th>Asset Title</th>
+                      <th>Platform</th>
+                      <th>Publisher</th>
+                      <th>Approval</th>
+                      <th>Status</th>
                     </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    ${clientContent.map(cnt => `
+                      <tr>
+                        <td><strong>${cnt.title}</strong></td>
+                        <td><span class="platform-badge">${cnt.platform}</span></td>
+                        <td>${cnt.author}</td>
+                        <td>
+                          <span class="status-badge ${cnt.approvalStatus === 'Approved' ? 'green' : 'yellow'}">
+                            ${cnt.approvalStatus}
+                          </span>
+                        </td>
+                        <td><strong>${cnt.status}</strong></td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
           </div>
 
           <!-- Funding Tab -->
@@ -1135,9 +1527,10 @@ function renderClientProfile(container, clientId) {
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Meeting Intel & Logs Tab -->
-            <div class="tab-pane" id="tab-meeting-intel">
+          <!-- Meeting Intel & Logs Tab -->
+          <div class="tab-pane" id="tab-meeting-intel">
               <div style="background:#e0f2fe; border:1px solid #bae6fd; padding:0.75rem; border-radius:8px; color:#0369a1; font-size:0.8rem; font-weight:600; display:flex; gap:0.4rem; align-items:center; margin-bottom:1rem;">
                 <span>💡</span>
                 <span>[PROTOTYPE ONLY] File uploads and transcript scanning are simulated. The Meeting Agent requires human approval before updating client parameters.</span>
@@ -1196,7 +1589,7 @@ function renderClientProfile(container, clientId) {
 
                   <!-- Proposed Change Logs -->
                   <div id="owProposedChangeLogsArea">
-                    \${renderProposedChangeLogsHtml(client.id)}
+                    ${renderProposedChangeLogsHtml(client.id)}
                   </div>
                 </div>
 
@@ -1205,14 +1598,14 @@ function renderClientProfile(container, clientId) {
                   <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:8px; margin-bottom:1rem;">
                     <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem; text-transform:none;">📜 Approved Version History</h4>
                     <div id="owVersionHistoryArea">
-                      \${renderVersionHistoryHtml(client.id)}
+                      ${renderVersionHistoryHtml(client.id)}
                     </div>
                   </div>
 
                   <div class="card p-4" style="background:white; border:1px solid var(--border-color); border-radius:8px;">
                     <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; border-bottom:1px solid #e2e8f0; padding-bottom:0.25rem; text-transform:none;">📅 Processed Meetings Log</h4>
                     <div id="owMeetingsLogArea">
-                      \${renderMeetingsLogHtml(client.id)}
+                      ${renderMeetingsLogHtml(client.id)}
                     </div>
                   </div>
                 </div>
@@ -1441,6 +1834,39 @@ function renderClientProfile(container, clientId) {
       openEditClientProfileModal(client.id);
     });
   }
+
+  const generatePlanBtn = container.querySelector('#btnGenerateDeliveryPlan');
+  if (generatePlanBtn) {
+    generatePlanBtn.addEventListener('click', async () => {
+      try {
+        generatePlanBtn.disabled = true;
+        generatePlanBtn.textContent = '⚡ Generating Plan...';
+        await generateInitialDeliveryPlan(client.id);
+        alert('Initial Delivery Plan generated! 7 real database tasks have been added.');
+        renderClientProfile(container, client.id);
+      } catch (err) {
+        alert('Failed to generate delivery plan: ' + err.message);
+        generatePlanBtn.disabled = false;
+        generatePlanBtn.textContent = '⚡ Generate Initial Delivery Plan';
+      }
+    });
+  }
+
+  container.querySelectorAll('.task-checkbox').forEach(chk => {
+    chk.addEventListener('change', async () => {
+      const taskId = chk.getAttribute('data-task-id');
+      const isChecked = chk.checked;
+      const status = isChecked ? 'Completed' : 'Pending';
+      try {
+        await updateTaskStatus(taskId, status);
+        alert(`Task status updated to ${status}!`);
+        renderClientProfile(container, client.id);
+      } catch (err) {
+        alert('Failed to update task status: ' + err.message);
+        chk.checked = !isChecked;
+      }
+    });
+  });
 }
 
 // Sub-renderers for Meeting Intel Tab
@@ -1638,88 +2064,103 @@ export function renderContentModule(container) {
       });
     }
 
-    // Render Board HTML
-    contentArea.innerHTML = `
-      <!-- Buffer-style platform filter bar -->
-      <div class="kanban-filters-row mb-4">
-        ${platforms.map(p => `
-          <button class="btn btn-sm ${activePlatformFilter === p ? 'btn-primary' : 'btn-outline'} platform-filter-btn" data-platform="${p}">
-            ${p}
-          </button>
-        `).join('')}
-      </div>
+    // Render Board HTML or Empty State
+    const clientContent = state.content.filter(cnt => state.currentUserRole === 'admin' || cnt.client === state.selectedClientId);
+    
+    if (clientContent.length === 0) {
+      contentArea.innerHTML = `
+        <div class="card p-6 text-center" style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; padding:4rem 2rem; margin-top:1rem;">
+          <div style="font-size:3rem; margin-bottom:1rem;">📝</div>
+          <h3 style="font-size:1.25rem; color:#1e293b; margin:0 0 0.5rem 0; font-weight:700; text-transform:none;">No content has been created yet</h3>
+          <p style="color:#64748b; font-size:0.9rem; max-width:520px; margin:0 auto 1.5rem auto; line-height:1.5;">
+            No content has been created yet. Generate content from the approved client brief, campaign plan, or uploaded evidence.
+          </p>
+          <a href="#agents" class="btn btn-primary" style="font-weight:700; padding:0.5rem 1.25rem; border-radius:8px; background:#4f46e5; border-color:#4f46e5; text-decoration:none; color:white; display:inline-block;">Go to AI Agents Workspace</a>
+        </div>
+      `;
+    } else {
+      contentArea.innerHTML = `
+        <!-- Buffer-style platform filter bar -->
+        <div class="kanban-filters-row mb-4">
+          ${platforms.map(p => `
+            <button class="btn btn-sm ${activePlatformFilter === p ? 'btn-primary' : 'btn-outline'} platform-filter-btn" data-platform="${p}">
+              ${p}
+            </button>
+          `).join('')}
+        </div>
 
-      <!-- Columns Container -->
-      <div class="kanban-board">
-        ${columns.map(col => {
-          // Filter content by column status, workspace scope client, and platform filter
-          const columnCards = state.content.filter(cnt => {
-            const matchCol = cnt.status === col;
-            const matchClient = state.currentUserRole === 'admin' || cnt.client === state.selectedClientId;
-            const matchPlatform = activePlatformFilter === 'All' || cnt.platform === activePlatformFilter;
-            return matchCol && matchClient && matchPlatform;
-          });
+        <!-- Columns Container -->
+        <div class="kanban-board">
+          ${columns.map(col => {
+            // Filter content by column status, workspace scope client, and platform filter
+            const columnCards = state.content.filter(cnt => {
+              const matchCol = cnt.status === col;
+              const matchClient = state.currentUserRole === 'admin' || cnt.client === state.selectedClientId;
+              const matchPlatform = activePlatformFilter === 'All' || cnt.platform === activePlatformFilter;
+              return matchCol && matchClient && matchPlatform;
+            });
 
-          return `
-            <div class="kanban-column" data-status="${col}">
-              <div class="column-header">
-                <h3>${col}</h3>
-                <span class="column-count">${columnCards.length}</span>
-              </div>
-              
-              <div class="column-cards-container" id="kanban-col-${col}">
-                ${columnCards.map(c => {
-                  const ngo = state.clients.find(cl => cl.id === c.client) || { name: 'Client', logo: '🌱' };
-                  let appStatusClass = c.approvalStatus.toLowerCase().replace(' ', '-');
-                  
-                  return `
-                    <div class="content-card card" draggable="true" data-card-id="${c.id}">
-                      <div class="card-tag-row" style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
-                        <span class="platform-badge" style="font-size: 0.68rem; padding: 1px 4px;">${c.platform}</span>
-                        ${c.contentPillar ? `<span class="pillar-badge" style="font-size: 0.68rem; padding: 1px 4px; border-radius: 4px; ${getColorForPillar(c.contentPillar)}">${c.contentPillar}</span>` : ''}
-                        ${c.aiGenerated ? '<span class="ai-badge" style="font-size: 0.68rem; padding: 1px 4px;">🤖 AI</span>' : ''}
-                      </div>
-                      <h4 class="card-title">${c.title || 'Untitled Post'}</h4>
-                      <p class="card-campaign">${c.campaign || 'General Content'}</p>
-                      
-                      <div class="card-client-row">
-                        <span class="mini-logo">${ngo.logo}</span>
-                        <span class="mini-name">${ngo.name}</span>
-                      </div>
-
-                      <div class="card-footer mt-4">
-                        <span class="approval-tag ${appStatusClass}">${c.approvalStatus}</span>
+            return `
+              <div class="kanban-column" data-status="${col}">
+                <div class="column-header">
+                  <h3>${col}</h3>
+                  <span class="column-count">${columnCards.length}</span>
+                </div>
+                
+                <div class="column-cards-container" id="kanban-col-${col}">
+                  ${columnCards.map(c => {
+                    const ngo = state.clients.find(cl => cl.id === c.client) || { name: 'Client', logo: '🌱' };
+                    let appStatusClass = c.approvalStatus.toLowerCase().replace(' ', '-');
+                    
+                    return `
+                      <div class="content-card card" draggable="true" data-card-id="${c.id}">
+                        <div class="card-tag-row" style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                          <span class="platform-badge" style="font-size: 0.68rem; padding: 1px 4px;">${c.platform}</span>
+                          ${c.contentPillar ? `<span class="pillar-badge" style="font-size: 0.68rem; padding: 1px 4px; border-radius: 4px; ${getColorForPillar(c.contentPillar)}">${c.contentPillar}</span>` : ''}
+                          ${c.aiGenerated ? '<span class="ai-badge" style="font-size: 0.68rem; padding: 1px 4px;">🤖 AI</span>' : ''}
+                        </div>
+                        <h4 class="card-title">${c.title || 'Untitled Post'}</h4>
+                        <p class="card-campaign">${c.campaign || 'General Content'}</p>
                         
-                        <div class="card-actions">
-                          ${col === 'Approval' ? `
-                            <button class="btn btn-xs btn-primary kanban-approve-btn" data-card-id="${c.id}">Approve</button>
-                          ` : ''}
+                        <div class="card-client-row">
+                          <span class="mini-logo">${ngo.logo}</span>
+                          <span class="mini-name">${ngo.name}</span>
+                        </div>
+
+                        <div class="card-footer mt-4">
+                          <span class="approval-tag ${appStatusClass}">${c.approvalStatus}</span>
                           
-                          <!-- Simple column shifter for mock interaction -->
-                          <div class="column-shifter">
-                            <button class="shift-btn prev-col" data-card-id="${c.id}">◀</button>
-                            <button class="shift-btn next-col" data-card-id="${c.id}">▶</button>
+                          <div class="card-actions">
+                            ${col === 'Approval' ? `
+                              <button class="btn btn-xs btn-primary kanban-approve-btn" data-card-id="${c.id}">Approve</button>
+                            ` : ''}
+                            
+                            <!-- Simple column shifter for mock interaction -->
+                            <div class="column-shifter">
+                              <button class="shift-btn prev-col" data-card-id="${c.id}">◀</button>
+                              <button class="shift-btn next-col" data-card-id="${c.id}">▶</button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  `;
-                }).join('')}
-                ${columnCards.length === 0 ? '<div class="column-empty">Empty</div>' : ''}
+                    `;
+                  }).join('')}
+                  ${columnCards.length === 0 ? '<div class="column-empty">Empty</div>' : ''}
+                </div>
               </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-    `;
+            `;
+          }).join('')}
+        </div>
+      `;
 
-    // Platform Filter buttons bind
-    contentArea.querySelectorAll('.platform-filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        activePlatformFilter = btn.getAttribute('data-platform');
-        renderContentModule(container);
+      // Platform Filter buttons bind
+      contentArea.querySelectorAll('.platform-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activePlatformFilter = btn.getAttribute('data-platform');
+          renderContentModule(container);
+        });
       });
-    });
+    }
 
     // Content card click
     contentArea.querySelectorAll('.content-card').forEach(card => {
@@ -2271,6 +2712,27 @@ export function renderReportsCenter(container) {
   const listReports = state.currentUserRole === 'admin' 
     ? state.reports 
     : state.reports.filter(r => r.client === state.selectedClientId);
+
+  if (listReports.length === 0) {
+    container.innerHTML = `
+      <div class="section-header-row mb-6">
+        <div>
+          <h1>Donor Reporting Center</h1>
+          <p class="subtitle">Compliance dashboard for tracking quarterly, monthly, and board narratives</p>
+        </div>
+      </div>
+
+      <div class="card p-6 text-center" style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; padding:4rem 2rem;">
+        <div style="font-size:3rem; margin-bottom:1rem;">📊</div>
+        <h3 style="font-size:1.25rem; color:#1e293b; margin:0 0 0.5rem 0; font-weight:700; text-transform:none;">No reports are ready yet</h3>
+        <p style="color:#64748b; font-size:0.9rem; max-width:520px; margin:0 auto 1.5rem auto; line-height:1.5;">
+          No reports are ready yet. Add social media metrics or upload performance screenshots to generate a report.
+        </p>
+        <a href="#agents" class="btn btn-primary" style="font-weight:700; padding:0.5rem 1.25rem; border-radius:8px; background:#4f46e5; border-color:#4f46e5; text-decoration:none; color:white; display:inline-block;">Go to AI Agents Workspace</a>
+      </div>
+    `;
+    return;
+  }
 
   container.innerHTML = `
     <div class="section-header-row mb-6">
@@ -3906,7 +4368,7 @@ function renderActiveTabContent(client, briefStatus, clientEvidence, clientOutpu
 
 function renderOverviewTabContent(client, briefStatus, clientEvidence, clientOutputs) {
   // 1. Tasks due today
-  const clientTasks = state.tasks.filter(t => t.client === client.id);
+  const clientTasks = state.tasks.filter(t => t.clientId === client.id || t.client === client.id);
   const tasksHtml = clientTasks.length === 0 
     ? `<div class="empty-state-text" style="color:var(--text-muted); font-size:0.8rem; font-style:italic; padding:1rem 0;">No priorities due today. You are all caught up!</div>`
     : `<ul class="today-tasks-list" style="list-style:none; padding:0; margin:0.5rem 0 0 0; display:flex; flex-direction:column; gap:0.5rem;">
@@ -4194,6 +4656,20 @@ function renderCreateWorkTabContent(client, briefStatus, clientEvidence) {
               </button>
             `;
           }).join('')}
+        </div>
+
+        <!-- Specialist Capability Outline -->
+        <div class="specialist-capability-outline mt-3" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:0.85rem; font-size:0.75rem;">
+          <h4 style="margin:0 0 0.5rem 0; font-size:0.8rem; font-weight:700; color:#1e293b; text-transform:none;">📋 Specialist Capability Outline</h4>
+          <p style="margin:0 0 0.5rem 0; font-size:0.7rem; color:#64748b;">Below are the exact formats each agent is trained to compile:</p>
+          <div style="display:grid; grid-template-columns: 1fr; gap:0.35rem;">
+            ${state.agents.map(a => `
+              <div style="display:flex; justify-content:space-between; border-bottom:1px solid #f1f5f9; padding-bottom:0.15rem; font-size:0.7rem; line-height:1.3;">
+                <span style="font-weight:600; color:#334155;">🤖 ${a.name}:</span>
+                <span style="color:#475569; text-align:right; font-weight:500;">${getAgentOutputsList(a.id)}</span>
+              </div>
+            `).join('')}
+          </div>
         </div>
 
         ${agentDetailsHtml}
@@ -5141,7 +5617,7 @@ export function renderAgentsDashboard(container) {
   const briefStatus = calculateBriefCompletion(client);
 
   // Filter evidence and AI outputs for this client
-  const clientEvidence = state.evidence.filter(e => e.client === client.id);
+  const clientEvidence = state.evidence.filter(e => e.clientId === client.id || e.client === client.id);
   const clientOutputs = state.aiOutputs.filter(o => o.clientId === client.id);
 
   // Persist / initialize wizard default client
