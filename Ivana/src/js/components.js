@@ -38,6 +38,85 @@ import {
 
 import { renderLineChart, renderBarChart } from './chart.js';
 
+const MISSING_FIELD_MAP = {
+  // ngoProfile -> tab 'basic'
+  'Organisation name': { tab: 'basic', id: 'eName' },
+  'Website': { tab: 'basic', id: 'eWebsite' },
+  'Country': { tab: 'basic', id: 'eCountry' },
+  'Sector': { tab: 'basic', id: 'eSector' },
+  'Mission statement': { tab: 'basic', id: 'eMission' },
+  'Primary contact person': { tab: 'basic', id: 'eContact' },
+  'Contact email': { tab: 'basic', id: 'eEmail' },
+  'Contact phone number': { tab: 'basic', id: 'ePhone' },
+
+  // brandIdentity -> tab 'brand'
+  'Logo upload': { tab: 'brand', id: 'eLogo' },
+  'Brand colours': { tab: 'brand', id: 'eColours' },
+  'Fonts': { tab: 'brand', id: 'eFonts' },
+  'Tone of voice': { tab: 'brand', id: 'eTone' },
+  'Writing style': { tab: 'brand', id: 'eStyle' },
+  'Words to use': { tab: 'brand', id: 'eWordsUse' },
+  'Words to avoid': { tab: 'brand', id: 'eWordsAvoid' },
+  'Approved hashtags': { tab: 'brand', id: 'eHashtags' },
+  'Existing Canva templates': { tab: 'brand', id: 'eCanva' },
+  'Existing poster examples': { tab: 'brand', id: 'ePoster' },
+  'Social media handles': { tab: 'brand', id: 'eHandles' },
+
+  // targetAudience -> tab 'audience'
+  'Who the NGO wants to reach': { tab: 'audience', id: 'eAudienceMain' },
+  'Community audience': { tab: 'audience', id: 'eAudienceComm' },
+  'Donor audience': { tab: 'audience', id: 'eAudienceDonor' },
+  'Government audience': { tab: 'audience', id: 'eAudienceGov' },
+  'Youth audience': { tab: 'audience', id: 'eAudienceYouth' },
+  'Media audience': { tab: 'audience', id: 'eAudienceMedia' },
+  'Age groups': { tab: 'audience', id: 'eAgeGroups' },
+  'Locations': { tab: 'audience', id: 'eLocations' },
+  'Languages required': { tab: 'audience', id: 'eLanguages' },
+  'Cultural considerations': { tab: 'audience', id: 'eCultural' },
+  'What audience must understand': { tab: 'audience', id: 'eAudienceUnder' },
+  'What action audience should take': { tab: 'audience', id: 'eAudienceAct' },
+
+  // campaignInfo -> tab 'campaigns'
+  'Campaign name': { tab: 'campaigns', id: 'ecName' },
+  'Campaign goal': { tab: 'campaigns', id: 'ecGoal' },
+  'Campaign start date': { tab: 'campaigns', id: 'ecStart' },
+  'Campaign end date': { tab: 'campaigns', id: 'ecEnd' },
+  'Main message': { tab: 'campaigns', id: 'ecMessage' },
+  'Key facts': { tab: 'campaigns', id: 'ecDesc' },
+  'Call to action': { tab: 'campaigns', id: 'ecCta' },
+  'Target platforms': { tab: 'campaigns', id: 'ecPlatforms' },
+  'Required posting frequency': { tab: 'campaigns', id: 'ecTarget' },
+  'Campaign priority': { tab: 'campaigns', id: 'ecPriority' },
+
+  // donorInfo -> tab 'funders'
+  'Current funders': { tab: 'funders', id: 'eFunders' },
+  'Grant names': { tab: 'funders', id: 'eGrants' },
+  'Reporting deadlines': { tab: 'funders', id: 'eDeadlines' },
+  'Required donor outputs': { tab: 'funders', id: 'eOutputs' },
+  'Donor logo requirements': { tab: 'funders', id: 'eLogoRules' },
+  'Funder communication rules': { tab: 'funders', id: 'eCommRules' },
+  'Required impact metrics': { tab: 'funders', id: 'eImpactMetrics' },
+  'Required evidence': { tab: 'funders', id: 'eEvidenceReq' }
+};
+
+function getMissingFieldActionHtml(fieldName, clientId) {
+  const config = MISSING_FIELD_MAP[fieldName];
+  if (!config) {
+    return `
+      <li style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.15rem 0; font-size:0.75rem;">
+        <span>• ${fieldName}</span>
+        <button class="complete-field-now-btn" data-client-id="${clientId}" data-tab="basic" style="background:none; border:none; color:#4f46e5; text-decoration:underline; font-size:0.7rem; font-weight:600; padding:0; cursor:pointer; outline:none;">Complete Now</button>
+      </li>
+    `;
+  }
+  return `
+    <li style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.15rem 0; font-size:0.75rem;">
+      <span>• ${fieldName}</span>
+      <button class="complete-field-now-btn" data-client-id="${clientId}" data-tab="${config.tab}" data-field-id="${config.id}" style="background:none; border:none; color:#4f46e5; text-decoration:underline; font-size:0.7rem; font-weight:600; padding:0; cursor:pointer; outline:none;">Complete Now</button>
+    </li>
+  `;
+}
+
 // Helper functions for grant formatting
 function formatOpportunityAmount(opp, selectedCurrency) {
   if (opp.amount === null || opp.amount === undefined) {
@@ -823,13 +902,29 @@ function renderOnboardingChecklistHtml(client) {
   };
 
   return `
-    <div style="background:#fffbeb; border:1px solid #fef3c7; padding:1.5rem; border-radius:12px; margin-bottom:1.5rem; color:#b45309;">
-      <h3 style="margin:0 0 0.5rem 0; font-size:1.1rem; display:flex; align-items:center; gap:0.5rem; color:#b45309; text-transform:none;">
-        ⚠️ Client Brief Pending Approval
-      </h3>
-      <p style="margin:0; font-size:0.85rem; line-height:1.5; color:#78350f;">
-        The client workspace is currently locked. To unlock the Client Delivery Plan and activate the specialized AI agents, please complete the client profile brief and approve it.
-      </p>
+    <div style="background:#fffbeb; border:1px solid #fef3c7; padding:1.5rem; border-radius:12px; margin-bottom:1.5rem; color:#b45309; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+      <div style="flex-grow:1; max-width:600px;">
+        <h3 style="margin:0 0 0.5rem 0; font-size:1.1rem; display:flex; align-items:center; gap:0.5rem; color:#b45309; text-transform:none;">
+          ⚠️ Client Brief Pending Approval
+        </h3>
+        <p style="margin:0; font-size:0.85rem; line-height:1.5; color:#78350f;">
+          The client workspace is currently locked. To unlock the Client Delivery Plan and activate the specialized AI agents, please complete the client profile brief and approve it.
+        </p>
+      </div>
+      <div>
+        <button class="btn btn-primary" id="btnApproveOnboardingChecklist" style="background:#10b981; border-color:#10b981; font-weight:700; color:white; padding:0.6rem 1.2rem; border-radius:8px; cursor:pointer; font-size:0.85rem; border:none; box-shadow:var(--shadow-sm);">⚡ Approve Onboarding Brief</button>
+      </div>
+    </div>
+
+    <!-- Quick Actions Card (Inline during onboarding) -->
+    <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+      <h4 style="margin:0 0 0.75rem 0; font-size:0.95rem; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:0.25rem; text-transform:none;">⚡ Workspace Quick Actions</h4>
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:0.75rem;">
+        <button class="btn btn-xs btn-outline qa-action-btn" id="qaAddCampaign" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">📁 Add Campaign</button>
+        <button class="btn btn-xs btn-outline qa-action-btn" id="qaUploadEvidence" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">📥 Upload Evidence</button>
+        <button class="btn btn-xs btn-outline qa-action-btn" id="qaUploadZoom" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">🎥 Upload Zoom Transcript</button>
+        <button class="btn btn-xs btn-outline qa-action-btn" id="qaAddSocial" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">📊 Add Social Baseline</button>
+      </div>
     </div>
 
     <div class="card p-5" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
@@ -857,8 +952,8 @@ function renderOnboardingChecklistHtml(client) {
               ${isDone ? `
                 <div style="font-size:0.75rem; color:#059669; font-weight:500; margin-top:0.5rem;">All fields completed!</div>
               ` : `
-                <ul style="padding-left:1.1rem; margin:0.5rem 0 0 0; font-size:0.75rem; color:#581c87; line-height:1.4;">
-                  ${missingFields.map(f => `<li>${f}</li>`).join('')}
+                <ul style="list-style:none; padding:0; margin:0.5rem 0 0 0; font-size:0.75rem; color:#581c87; line-height:1.4;">
+                  ${missingFields.map(f => getMissingFieldActionHtml(f, client.id)).join('')}
                 </ul>
               `}
             </div>
@@ -1147,6 +1242,35 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
           </div>
         </div>
 
+        <!-- Quick Actions Card (Inline on Delivery Plan) -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow-sm);">
+          <h4 style="margin:0 0 0.75rem 0; font-size:0.95rem; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:0.25rem; text-transform:none;">⚡ Workspace Quick Actions</h4>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
+            <button class="btn btn-xs btn-outline qa-action-btn" id="qaAddCampaign" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">📁 Add Campaign</button>
+            <button class="btn btn-xs btn-outline qa-action-btn" id="qaUploadEvidence" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">📥 Upload Evidence</button>
+            <button class="btn btn-xs btn-outline qa-action-btn" id="qaUploadZoom" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">🎥 Upload Zoom</button>
+            <button class="btn btn-xs btn-outline qa-action-btn" id="qaAddSocial" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">📊 Add Social Baseline</button>
+          </div>
+
+          <h5 style="margin:0 0 0.5rem 0; font-size:0.8rem; font-weight:700; color:#475569; border-top:1px solid #f1f5f9; padding-top:0.5rem; text-transform:none;">🤖 Run AI Agent</h5>
+          <div style="display:flex; flex-direction:column; gap:0.4rem;">
+            ${state.agents.map(agent => {
+              const checklist = getAgentChecklist(agent.id, client, clientEvidence);
+              const isReady = checklist.every(c => c.met);
+              return `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:0.4rem 0.6rem; border-radius:6px; border:1px solid #e2e8f0; font-size:0.75rem;">
+                  <span style="font-weight:600; color:#334155;">🤖 ${agent.name}</span>
+                  ${isReady ? `
+                    <button class="btn btn-xs btn-primary run-agent-btn" data-agent-id="${agent.id}" data-client-id="${client.id}" style="background:#10b981; border-color:#10b981; color:white; font-weight:700; padding:0.15rem 0.5rem; font-size:0.7rem; cursor:pointer; border:none; border-radius:4px;">Run Agent</button>
+                  ` : `
+                    <span style="color:#64748b; font-size:0.65rem; font-weight:500; font-style:italic;">(Missing reqs)</span>
+                  `}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
         <!-- Missing Info Alert -->
         <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
           <h4 style="margin:0 0 0.75rem 0; font-size:0.9rem; font-weight:700; color:#0f172a; text-transform:none;">⚠️ Missing Profile Details</h4>
@@ -1155,9 +1279,9 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
               <div style="color:#059669; font-weight:600;">🎉 Brief is 100% complete!</div>
             ` : `
               <p style="color:#64748b; margin-top:0;">The following parameters are missing in the brief:</p>
-              <ul style="padding-left:1.1rem; margin:0; color:#b91c1c; font-weight:500;">
-                ${allMissing.slice(0, 10).map(m => `<li style="margin-bottom:0.25rem;">${m}</li>`).join('')}
-                ${allMissing.length > 10 ? `<li>...and ${allMissing.length - 10} more.</li>` : ''}
+              <ul style="list-style:none; padding:0; margin:0; color:#b91c1c; font-weight:500;">
+                ${allMissing.slice(0, 10).map(m => getMissingFieldActionHtml(m, client.id)).join('')}
+                ${allMissing.length > 10 ? `<li style="margin-top:0.25rem; font-style:italic;">...and ${allMissing.length - 10} more.</li>` : ''}
               </ul>
             `}
           </div>
@@ -1865,6 +1989,95 @@ function renderClientProfile(container, clientId) {
         alert('Failed to update task status: ' + err.message);
         chk.checked = !isChecked;
       }
+    });
+  });
+
+  // 1. Approve Onboarding Brief directly from checklist
+  const btnApproveOnboarding = container.querySelector('#btnApproveOnboardingChecklist');
+  if (btnApproveOnboarding) {
+    btnApproveOnboarding.addEventListener('click', async () => {
+      try {
+        btnApproveOnboarding.disabled = true;
+        btnApproveOnboarding.textContent = '⚡ Approving...';
+        await updateClientBrief(client.id, { isBriefApproved: true, clientStatus: 'Active', areAgentsActivated: true });
+        alert('Client onboarding brief approved successfully! The delivery plan is now unlocked.');
+        renderClientProfile(container, client.id);
+      } catch (err) {
+        alert('Failed to approve onboarding: ' + err.message);
+        btnApproveOnboarding.disabled = false;
+        btnApproveOnboarding.textContent = '⚡ Approve Onboarding Brief';
+      }
+    });
+  }
+
+  // 2. Complete Field Now buttons
+  container.querySelectorAll('.complete-field-now-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tab = btn.getAttribute('data-tab');
+      const fieldId = btn.getAttribute('data-field-id');
+      openEditClientProfileModal(client.id, tab, fieldId);
+    });
+  });
+
+  // 3. Quick Actions: Add Campaign
+  const qaAddCampaign = container.querySelector('#qaAddCampaign');
+  if (qaAddCampaign) {
+    qaAddCampaign.addEventListener('click', () => {
+      openEditClientProfileModal(client.id, 'campaigns', 'ecName');
+    });
+  }
+
+  // 4. Quick Actions: Upload Evidence
+  const qaUploadEvidence = container.querySelector('#qaUploadEvidence');
+  if (qaUploadEvidence) {
+    qaUploadEvidence.addEventListener('click', () => {
+      const tabBtn = container.querySelector('.profile-tab-btn[data-tab="evidence"]');
+      if (tabBtn) tabBtn.click();
+      setTimeout(() => {
+        const ingestBtn = document.getElementById('ingestEvidenceBtn');
+        if (ingestBtn) ingestBtn.click();
+      }, 100);
+    });
+  }
+
+  // 5. Quick Actions: Upload Zoom Transcript
+  const qaUploadZoom = container.querySelector('#qaUploadZoom');
+  if (qaUploadZoom) {
+    qaUploadZoom.addEventListener('click', () => {
+      const tabBtn = container.querySelector('.profile-tab-btn[data-tab="meeting-intel"]');
+      if (tabBtn) tabBtn.click();
+      setTimeout(() => {
+        const fileEl = document.getElementById('profileMeetingTranscriptFile');
+        if (fileEl) {
+          fileEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          fileEl.focus();
+          fileEl.style.transition = 'all 0.5s ease';
+          fileEl.style.boxShadow = '0 0 0 4px #fbbf24';
+          setTimeout(() => { fileEl.style.boxShadow = ''; }, 3000);
+        }
+      }, 100);
+    });
+  }
+
+  // 6. Quick Actions: Add Social Baseline
+  const qaAddSocial = container.querySelector('#qaAddSocial');
+  if (qaAddSocial) {
+    qaAddSocial.addEventListener('click', () => {
+      openEditClientProfileModal(client.id, 'baseline', 'eFbPageUrl');
+    });
+  }
+
+  // 7. Quick Actions: Run Agent
+  container.querySelectorAll('.run-agent-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const agentId = btn.getAttribute('data-agent-id');
+      const cId = btn.getAttribute('data-client-id');
+      crWizardInputs.clientId = cId;
+      crWizardInputs.agentId = agentId;
+      crActiveTab = 'create-work';
+      crWizardStep = 3;
+      location.hash = '#agents';
     });
   });
 }
@@ -4461,8 +4674,7 @@ function renderOverviewTabContent(client, briefStatus, clientEvidence, clientOut
             <div class="missing-info-section" style="background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:0.5rem; font-size:0.75rem;">
               <h4 style="margin:0 0 0.25rem 0; font-weight:600; font-size:0.75rem; color:#b45309;">${sectionTitles[sec] || sec}</h4>
               <ul class="missing-fields-list" style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.15rem; color:#78350f;">
-                ${missingFields.slice(0, 2).map(f => `<li style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">• ${f}</li>`).join('')}
-                ${missingFields.length > 2 ? `<li style="font-weight:600; font-size:0.65rem;">+${missingFields.length - 2} more</li>` : ''}
+                ${missingFields.map(f => getMissingFieldActionHtml(f, client.id)).join('')}
               </ul>
             </div>
           `;
@@ -8056,7 +8268,7 @@ function openNewClientModal() {
 }
 
 // 6. Edit Client Profile Modal
-export function openEditClientProfileModal(clientId) {
+export function openEditClientProfileModal(clientId, activeTab = 'basic', highlightFieldId = null) {
   const client = state.clients.find(c => c.id === clientId);
   if (!client) {
     alert('Client not found.');
@@ -8595,6 +8807,34 @@ export function openEditClientProfileModal(clientId) {
       if (targetPane) targetPane.classList.add('active');
     });
   });
+
+  // Programmatically switch to targetTab and highlight target element
+  if (activeTab && activeTab !== 'basic') {
+    const tabBtn = modal.querySelector(`.edit-tab-btn[data-tab="${activeTab}"]`);
+    if (tabBtn) {
+      tabBtn.click();
+    }
+  }
+
+  if (highlightFieldId) {
+    setTimeout(() => {
+      const fieldEl = document.getElementById(highlightFieldId);
+      if (fieldEl) {
+        fieldEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        fieldEl.focus();
+
+        fieldEl.style.transition = 'all 0.5s ease';
+        fieldEl.style.boxShadow = '0 0 0 4px #fbbf24';
+        fieldEl.style.borderColor = '#fbbf24';
+
+        setTimeout(() => {
+          fieldEl.style.boxShadow = '';
+          fieldEl.style.borderColor = '';
+        }, 3000);
+      }
+    }, 100);
+  }
+
 
   // Render campaigns list helper
   const renderCampaignsList = () => {
