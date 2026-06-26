@@ -162,12 +162,59 @@ function formatOpportunityDeadline(opp) {
 
 // RENDER ADMIN DASHBOARD
 export function renderAdminDashboard(container) {
-  const activeClientsCount = state.clients.filter(c => c.monthlyFee > 0).length;
-  const totalRevenue = state.clients.reduce((acc, c) => acc + c.monthlyFee, 0);
+  // Filter state arrays to only include database-backed / current active clients
+  const dbClientIds = new Set(state.clients.map(c => c.id));
+  
+  const activeClientsCount = state.clients.length;
+  const totalRevenue = state.clients.reduce((acc, c) => acc + (c.monthlyFee || 0), 0);
   const activeProjectsCount = state.clients.reduce((acc, c) => acc + (c.activeProjectsCount || 0), 0);
-  const reportsDueCount = state.reports.filter(r => r.status !== 'Submitted').length;
-  const contentWaitingCount = state.content.filter(c => c.approvalStatus === 'Pending').length;
+  
+  const clientReports = state.reports.filter(r => dbClientIds.has(r.clientId || r.client_id || r.client));
+  const reportsDueCount = clientReports.filter(r => r.status !== 'Submitted').length;
+  
+  const clientContent = state.content.filter(c => dbClientIds.has(c.clientId || c.client_id || c.client));
+  const contentWaitingCount = clientContent.filter(c => c.approvalStatus === 'Pending').length;
+  
   const fundingOpportunitiesCount = state.fundingOpportunities.filter(o => o.status === 'New' || o.status === 'Reviewing').length;
+
+  const clientTasks = state.tasks.filter(t => dbClientIds.has(t.clientId || t.client_id || t.client));
+
+  // Compute CEO Command Center metrics dynamically
+  const clientHealthScore = state.clients.length > 0 
+    ? Math.round((state.clients.filter(c => c.isBriefApproved).length / state.clients.length) * 100) 
+    : 0;
+    
+  const revenueScore = state.clients.length > 0 
+    ? Math.min(100, Math.round((totalRevenue / 10000) * 100)) 
+    : 0;
+
+  const reportingComplianceScore = state.clients.length > 0 
+    ? (clientReports.length > 0 ? Math.round((clientReports.filter(r => r.status === 'Submitted').length / clientReports.length) * 100) : 100) 
+    : 0;
+
+  const projectCompletionScore = state.clients.length > 0 
+    ? (clientReports.length > 0 ? Math.round(clientReports.reduce((acc, r) => acc + (r.completion || 0), 0) / clientReports.length) : 100) 
+    : 0;
+
+  const agentPerformanceScore = state.clients.length > 0 
+    ? Math.round(state.agents.reduce((acc, a) => acc + (a.successRate || 100), 0) / state.agents.length) 
+    : 0;
+
+  const businessHealthScore = state.clients.length > 0 
+    ? Math.round((clientHealthScore + revenueScore + reportingComplianceScore + projectCompletionScore + agentPerformanceScore) / 5) 
+    : 0;
+
+  // Sync back to state for external references if any
+  state.ceoMetrics.clientHealthScore = clientHealthScore;
+  state.ceoMetrics.revenueScore = revenueScore;
+  state.ceoMetrics.reportingComplianceScore = reportingComplianceScore;
+  state.ceoMetrics.projectCompletionScore = projectCompletionScore;
+  state.ceoMetrics.agentPerformanceScore = agentPerformanceScore;
+  state.ceoMetrics.businessHealthScore = businessHealthScore;
+
+  const recText = state.ceoMetrics.overallAiRecommendation || '';
+  const containsDemoMention = /groundwork|vukani|clean\s*air/i.test(recText);
+  const showAiRecommendation = state.clients.length > 0 && !containsDemoMention && recText.trim() !== '';
 
   container.innerHTML = `
     <!-- Top KPI Row -->
@@ -218,7 +265,7 @@ export function renderAdminDashboard(container) {
         <div class="kpi-icon danger">🔥</div>
         <div class="kpi-info">
           <span class="kpi-label">Tasks Due Today</span>
-          <span class="kpi-value">${state.tasks.length} Priorities</span>
+          <span class="kpi-value">${clientTasks.length} Priorities</span>
         </div>
       </div>
     </div>
@@ -274,12 +321,14 @@ export function renderAdminDashboard(container) {
         </div>
       </div>
 
+      ${showAiRecommendation ? `
       <div class="ai-recommendation-box">
         <div class="ai-recommendation-header">
           <span class="sparkle">✨</span> <strong>AI Consultant Recommendation</strong>
         </div>
-        <p class="ai-recommendation-text">"${state.ceoMetrics.overallAiRecommendation}"</p>
+        <p class="ai-recommendation-text">"${recText}"</p>
       </div>
+      ` : ''}
     </div>
 
     <!-- Main Content Split -->
@@ -292,6 +341,11 @@ export function renderAdminDashboard(container) {
           <span class="tag">Managed Accounts</span>
         </div>
         <div class="table-container">
+          ${state.clients.length === 0 ? `
+            <div class="empty-state-message" style="padding: 2rem; text-align: center; color: var(--text-muted); font-style: italic;">
+              No clients added yet. Add your first NGO client to start.
+            </div>
+          ` : `
           <table>
             <thead>
               <tr>
@@ -317,14 +371,15 @@ export function renderAdminDashboard(container) {
                       <span class="dot"></span> ${c.databaseBacked ? (c.isBriefApproved ? 'Healthy' : 'Pending Onboarding') : 'Frontend Demo Placeholder'}
                     </span>
                   </td>
-                  <td>${c.activeProjectsCount}</td>
-                  <td>${c.reportsDueCount}</td>
-                  <td><strong>£${c.monthlyFee.toLocaleString()}</strong></td>
+                  <td>${c.activeProjectsCount || 0}</td>
+                  <td>${c.reportsDueCount || 0}</td>
+                  <td><strong>£${(c.monthlyFee || 0).toLocaleString()}</strong></td>
                   <td><span class="deadline-txt ${c.databaseBacked && c.status === 'red' ? 'danger' : ''}">${c.nextDeadline || 'None'}</span></td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
+          `}
         </div>
       </div>
 
@@ -335,7 +390,7 @@ export function renderAdminDashboard(container) {
           <span class="tag danger">Urgent Actions</span>
         </div>
         <div class="task-list">
-          ${state.tasks.map(t => {
+          ${clientTasks.map(t => {
             const client = state.clients.find(c => c.id === t.client) || { name: 'NGO Client', logo: '🌐' };
             let priorityClass = t.priority.toLowerCase();
             let statusClass = t.status.toLowerCase().replace(' ', '-');
@@ -382,9 +437,10 @@ export function renderAdminDashboard(container) {
             <textarea id="pipelineEvidenceInput" placeholder="Paste field notes, survey results, whatsapp reports, or photo caption text..."></textarea>
             <div class="pipeline-select-row">
               <select id="pipelineClientSelect">
-                ${state.clients.slice(0, 4).map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                <option value="">-- Select Client --</option>
+                ${state.clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
               </select>
-              <button id="runPipelineBtn" class="btn btn-primary">Run AI Agents</button>
+              <button id="runPipelineBtn" class="btn btn-primary" disabled>Run AI Agents</button>
             </div>
           </div>
         </div>
@@ -443,21 +499,39 @@ export function renderAdminDashboard(container) {
       // Auto pick client
       const select = document.getElementById('pipelineClientSelect');
       if (select) {
+        let matchValue = '';
         if (txt.includes('Durban') || txt.includes('Waste')) {
-          select.value = 'groundwork';
+          const opt = Array.from(select.options).find(o => o.value.includes('groundwork') || o.text.toLowerCase().includes('groundwork'));
+          if (opt) matchValue = opt.value;
         } else if (txt.includes('Court') || txt.includes('Niger')) {
-          select.value = 'ecojustice';
+          const opt = Array.from(select.options).find(o => o.value.includes('ecojustice') || o.text.toLowerCase().includes('ecojustice'));
+          if (opt) matchValue = opt.value;
         }
+        select.value = matchValue;
+        select.dispatchEvent(new Event('change'));
       }
     });
   });
 
   // Run pipeline trigger
   const runBtn = document.getElementById('runPipelineBtn');
+  const clientSelect = document.getElementById('pipelineClientSelect');
+  if (clientSelect && runBtn) {
+    const updateBtnState = () => {
+      runBtn.disabled = !clientSelect.value;
+    };
+    clientSelect.addEventListener('change', updateBtnState);
+    updateBtnState();
+  }
+
   if (runBtn) {
     runBtn.addEventListener('click', () => {
       const evidence = document.getElementById('pipelineEvidenceInput').value.trim();
       const clientId = document.getElementById('pipelineClientSelect').value;
+      if (!clientId) {
+        alert('Please select a client from the dropdown first.');
+        return;
+      }
       if (!evidence) {
         alert('Please enter some field evidence or click one of the preset templates.');
         return;

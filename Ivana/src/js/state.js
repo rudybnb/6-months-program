@@ -277,7 +277,7 @@ export const state = {
     reportingComplianceScore: 97,
     projectCompletionScore: 92,
     agentPerformanceScore: 95,
-    overallAiRecommendation: 'Seeded with groundWork SA and Vukani Environmental demo profiles. Check AI Control Room to execute agents.'
+    overallAiRecommendation: 'Select a client profile or check the AI Control Room to execute agents.'
   },
 
   // Campaigns Section
