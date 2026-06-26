@@ -421,6 +421,11 @@ export function renderAdminDashboard(container) {
 
     <!-- AI Evidence Pipeline Trigger Box -->
     <div class="dashboard-section card pipeline-trigger-card">
+      ${state.clients.length === 0 ? `
+        <div style="padding: 2rem; text-align: center; color: var(--text-muted); font-style: italic;">
+          Add a client before running the AI pipeline.
+        </div>
+      ` : `
       <div class="pipeline-card-inner">
         <div class="pipeline-info-side">
           <h2>🚀 Upload Field Evidence & Run AI Pipeline</h2>
@@ -445,6 +450,7 @@ export function renderAdminDashboard(container) {
           </div>
         </div>
       </div>
+      `}
     </div>
   `;
 
@@ -4019,9 +4025,12 @@ Full report compiled and ready for donor submission! 📈 #NGOImpact #CommunityD
 
 // RENDER REPORTS CENTER (Cross-client tracking)
 export function renderReportsCenter(container) {
+  const dbClientIds = new Set(state.clients.map(c => c.id));
+  const filteredReports = state.reports.filter(r => dbClientIds.has(r.clientId || r.client_id || r.client));
+
   const listReports = state.currentUserRole === 'admin' 
-    ? state.reports 
-    : state.reports.filter(r => r.client === state.selectedClientId);
+    ? filteredReports 
+    : filteredReports.filter(r => (r.clientId || r.client_id || r.client) === state.selectedClientId);
 
   if (listReports.length === 0) {
     container.innerHTML = `
@@ -4034,9 +4043,9 @@ export function renderReportsCenter(container) {
 
       <div class="card p-6 text-center" style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; padding:4rem 2rem;">
         <div style="font-size:3rem; margin-bottom:1rem;">📊</div>
-        <h3 style="font-size:1.25rem; color:#1e293b; margin:0 0 0.5rem 0; font-weight:700; text-transform:none;">No reports are ready yet</h3>
+        <h3 style="font-size:1.25rem; color:#1e293b; margin:0 0 0.5rem 0; font-weight:700; text-transform:none;">No reports yet</h3>
         <p style="color:#64748b; font-size:0.9rem; max-width:520px; margin:0 auto 1.5rem auto; line-height:1.5;">
-          No reports are ready yet. Add social media metrics or upload performance screenshots to generate a report.
+          No reports yet. Add a client and generate a report.
         </p>
         <a href="#agents" class="btn btn-primary" style="font-weight:700; padding:0.5rem 1.25rem; border-radius:8px; background:#4f46e5; border-color:#4f46e5; text-decoration:none; color:white; display:inline-block;">Go to AI Agents Workspace</a>
       </div>
