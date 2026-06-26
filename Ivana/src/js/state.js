@@ -2,6 +2,9 @@
 export const state = {
   currentUserRole: 'admin', // 'admin' or 'client'
   selectedClientId: 'groundwork-demo', // Start with demo client selected
+  agentRunResult: null,
+  taskRunStates: {},
+  agentRuns: [],
   
   // Live Currency Exchange Rate State
   currency: 'GBP', // 'GBP' or 'ZAR'
@@ -54,7 +57,7 @@ export const state = {
       wordsToUse: 'Environmental justice, community monitoring, grassroots, accountability',
       wordsToAvoid: '', // 2. Missing
       approvedHashtags: '#EnvironmentalJustice, #CleanAirSA, #GrassrootsAction',
-      canvaTemplates: '', // 3. Missing
+      canvaTemplates: 'https://canva.com/design/groundWork-brand-templates', // Canva brand templates
       posterExamples: '', // 4. Missing
       socialHandles: '@groundworksa',
 
@@ -364,6 +367,20 @@ export const state = {
       sourceType: 'Excel',
       verificationStatus: 'Needs Review',
       textExcerpt: 'Survey data showing 87 out of 100 Soweto waste pickers operate without basic safety boots or high-visibility clothing.',
+      isDemoData: true
+    },
+    {
+      id: 'ev_brand1',
+      name: 'groundWork Canva Brand Template.canva',
+      client: 'groundwork-demo',
+      client_id: 'groundwork-demo',
+      project: 'Brand Identity',
+      campaign: 'Clean Air Durban',
+      contentType: 'Brand / Design Evidence',
+      dateUploaded: '2026-06-01',
+      sourceType: 'Link',
+      verificationStatus: 'Verified',
+      textExcerpt: 'Official groundWork SA Canva brand template with approved colour palette (#15803d, #1e3a8a), Inter/Outfit fonts, and approved poster layouts for digital and print.',
       isDemoData: true
     }
   ],
@@ -797,6 +814,12 @@ export async function loadClientWorkspaceData(clientId) {
       state.tasks = await tasksRes.json();
     }
 
+    // Fetch agent runs from database
+    const runsRes = await authFetch(`${API_BASE}/api/clients/${clientId}/agent-runs`);
+    if (runsRes.ok) {
+      state.agentRuns = await runsRes.json();
+    }
+
     // Map database-backed ai_outputs to state.content for Kanban Board
     state.content = state.aiOutputs.map(o => {
       const camp = state.campaigns.find(cmp => cmp.id === o.campaignId);
@@ -923,12 +946,15 @@ export async function addContentCard(card) {
   }
 }
 
-export async function updateContentStatus(cardId, newStatus) {
+export async function updateContentStatus(cardId, newStatus, extraParams = {}) {
   let dbStatus = newStatus;
   if (newStatus === 'Ideas') dbStatus = 'Draft';
   else if (newStatus === 'Review') dbStatus = 'Internal Review';
   else if (newStatus === 'Approval') dbStatus = 'Client Approved';
-  await updateAiOutputStatus(cardId, dbStatus);
+  // Canva-specific statuses pass through directly:
+  // 'Brief Generated', 'In Canva Design', 'Canva Draft Uploaded',
+  // 'Internal Review', 'Client Approved', 'Scheduled / Published'
+  await updateAiOutputStatus(cardId, dbStatus, undefined, extraParams);
 }
 
 export async function approveContentCard(cardId) {
@@ -1211,9 +1237,30 @@ export function calculateBriefCompletion(client) {
     ngoProfile: [], brandIdentity: [], targetAudience: [], campaignInfo: [], donorInfo: []
   };
 
+  const clientCampaigns = state.campaigns ? state.campaigns.filter(c => c.clientId === client.id || c.client === client.id) : [];
+  const clientEvidence = state.evidence ? state.evidence.filter(e => e.clientId === client.id || e.client === client.id) : [];
+  const mainCamp = clientCampaigns[0] || {};
+
   for (const section in fields) {
     for (const field in fields[section]) {
-      const val = client[field];
+      let val = client[field];
+      if (section === 'campaignInfo') {
+        const campaignFieldMapping = {
+          campaignName: mainCamp.name,
+          campaignGoal: mainCamp.goal,
+          startDate: mainCamp.startDate,
+          endDate: mainCamp.endDate,
+          mainMessage: mainCamp.mainMessage,
+          keyFacts: mainCamp.description,
+          callToAction: mainCamp.callToAction,
+          targetPlatforms: mainCamp.targetPlatforms,
+          monthlyContentTarget: mainCamp.monthlyContentTarget,
+          priority: mainCamp.priority
+        };
+        if (campaignFieldMapping[field] !== undefined) {
+          val = campaignFieldMapping[field];
+        }
+      }
       if (val !== undefined && val !== null && val !== '' && (Array.isArray(val) ? val.length > 0 : true)) {
         filledCount++;
       } else {
@@ -1225,12 +1272,19 @@ export function calculateBriefCompletion(client) {
   const score = Math.round((filledCount / totalFields) * 100);
   let status = 'Red';
   let statusText = 'Not Enough Information';
-  if (score >= 80) {
+
+  const hasCampaign = clientCampaigns.length > 0;
+  const hasEvidence = clientEvidence.length > 0;
+
+  if (score >= 80 && hasCampaign && hasEvidence) {
     status = 'Green';
-    statusText = 'Ready to Generate';
+    statusText = 'Ready to run';
   } else if (score >= 40) {
     status = 'Yellow';
     statusText = 'Missing Important Information';
+  } else {
+    status = 'Red';
+    statusText = 'Not Enough Information';
   }
 
   return { score, status, statusText, missing };
@@ -1329,13 +1383,12 @@ export async function addAiOutput(output) {
   }
 }
 
-// Update AI output workflow statuses (approval, scheduling, publishing)
-export async function updateAiOutputStatus(id, newStatus, approvedBy = 'Irene K.') {
+export async function updateAiOutputStatus(id, newStatus, approvedBy = 'Irene K.', extraParams = {}) {
   try {
     const res = await authFetch(`${API_BASE}/api/ai-outputs/${id}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus, approvedBy })
+      body: JSON.stringify({ status: newStatus, approvedBy, ...extraParams })
     });
     if (res.ok) {
       await loadClientWorkspaceData(state.selectedClientId);
@@ -1357,6 +1410,52 @@ export async function updateClientBrief(clientId, briefData) {
     }
   } catch (err) {
     console.error('Client brief update failed:', err);
+  }
+}
+
+export async function createAgentRun(clientId, taskName, agentName, campaignId, primarySourceType, primarySourceId, supportingEvidenceIds, triggeredBy, retryOfRunId) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/clients/${clientId}/agent-runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        taskName,
+        agentName,
+        campaignId,
+        primarySourceType,
+        primarySourceId,
+        supportingEvidenceIds: Array.isArray(supportingEvidenceIds) ? JSON.stringify(supportingEvidenceIds) : supportingEvidenceIds,
+        triggeredBy,
+        retryOfRunId
+      })
+    });
+    if (res.ok) {
+      const newRun = await res.json();
+      await loadClientWorkspaceData(clientId);
+      return newRun;
+    }
+  } catch (err) {
+    console.error('Failed to create agent run log:', err);
+  }
+}
+
+export async function updateAgentRun(runId, status, errorMessage = null, outputId = null, stepLogs = null) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/agent-runs/${runId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status,
+        errorMessage,
+        outputId,
+        stepLogs: Array.isArray(stepLogs) ? JSON.stringify(stepLogs) : stepLogs
+      })
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Failed to update agent run log:', err);
   }
 }
 

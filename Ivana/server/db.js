@@ -240,12 +240,26 @@ export async function initDb() {
       table.string('sourceRequestId').references('id').inTable('content_requests').onDelete('SET NULL');
 
       // Audits
-      table.string('approvedBy');
+      table.string('approvedBy').nullable();
       table.timestamp('approvedAt').nullable();
-      table.string('scheduledBy');
+      table.string('approved_by').nullable();
+      table.timestamp('approved_at').nullable();
+      table.string('scheduledBy').nullable();
       table.timestamp('scheduledAt').nullable();
-      table.string('publishedBy');
+      table.string('scheduled_by').nullable();
+      table.timestamp('scheduled_at').nullable();
+      table.string('publishedBy').nullable();
       table.timestamp('publishedAt').nullable();
+      table.string('published_by').nullable();
+      table.timestamp('published_at').nullable();
+      table.string('reviewedBy').nullable();
+      table.timestamp('reviewedAt').nullable();
+      table.string('reviewed_by').nullable();
+      table.timestamp('reviewed_at').nullable();
+      table.text('requestChangesFeedback').nullable();
+      table.text('request_changes_feedback').nullable();
+      table.text('supportingEvidenceIds').nullable();
+      table.text('canvaDesignLink').nullable(); // Canva poster design URL submitted by designer
 
       table.timestamps(true, true);
 
@@ -288,6 +302,76 @@ export async function initDb() {
     if (!await db.schema.hasColumn('ai_outputs', 'sourceRequestId')) {
       await db.schema.table('ai_outputs', table => {
         table.string('sourceRequestId').references('id').inTable('content_requests').onDelete('SET NULL');
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'supportingEvidenceIds')) {
+      await db.schema.table('ai_outputs', table => {
+        table.text('supportingEvidenceIds').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'reviewedBy')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('reviewedBy').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'reviewedAt')) {
+      await db.schema.table('ai_outputs', table => {
+        table.timestamp('reviewedAt').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'reviewed_by')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('reviewed_by').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'reviewed_at')) {
+      await db.schema.table('ai_outputs', table => {
+        table.timestamp('reviewed_at').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'approved_by')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('approved_by').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'approved_at')) {
+      await db.schema.table('ai_outputs', table => {
+        table.timestamp('approved_at').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'scheduled_by')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('scheduled_by').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'scheduled_at')) {
+      await db.schema.table('ai_outputs', table => {
+        table.timestamp('scheduled_at').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'published_by')) {
+      await db.schema.table('ai_outputs', table => {
+        table.string('published_by').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'published_at')) {
+      await db.schema.table('ai_outputs', table => {
+        table.timestamp('published_at').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'requestChangesFeedback')) {
+      await db.schema.table('ai_outputs', table => {
+        table.text('requestChangesFeedback').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'request_changes_feedback')) {
+      await db.schema.table('ai_outputs', table => {
+        table.text('request_changes_feedback').nullable();
+      });
+    }
+    if (!await db.schema.hasColumn('ai_outputs', 'canvaDesignLink')) {
+      await db.schema.table('ai_outputs', table => {
+        table.text('canvaDesignLink').nullable();
       });
     }
   }
@@ -462,6 +546,28 @@ export async function initDb() {
       table.string('priority').defaultTo('Medium');
       table.string('dueDate').nullable();
       table.timestamps(true, true);
+    });
+  }
+
+  // Agent Runs table
+  if (!await db.schema.hasTable('agent_runs')) {
+    await db.schema.createTable('agent_runs', table => {
+      table.string('id').primary();
+      table.string('clientId').references('id').inTable('client_workspaces').onDelete('CASCADE');
+      table.string('campaignId').references('id').inTable('campaigns').onDelete('SET NULL');
+      table.string('agentName').notNullable();
+      table.string('taskName').notNullable();
+      table.timestamp('startedAt').nullable();
+      table.timestamp('finishedAt').nullable();
+      table.string('status').notNullable();
+      table.text('errorMessage').nullable();
+      table.string('outputId').references('id').inTable('ai_outputs').onDelete('SET NULL');
+      table.string('primarySourceType').nullable(); // 'evidence', 'meeting', 'manual_entry'
+      table.string('primarySourceId').nullable();
+      table.text('supportingEvidenceIds').nullable();
+      table.text('stepLogs').nullable();
+      table.string('triggeredBy').nullable();
+      table.string('retryOfRunId').references('id').inTable('agent_runs').onDelete('SET NULL');
     });
   }
 

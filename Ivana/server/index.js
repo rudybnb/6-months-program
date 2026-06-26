@@ -706,7 +706,8 @@ app.post('/api/ai-outputs', authenticateToken, async (req, res) => {
       internalNotes: req.user.role === 'admin' ? (output.internalNotes || output.internal_notes || null) : null,
       clientNotes: output.clientNotes || output.client_notes || null,
       platform: output.platform || null,
-      title: output.title || null
+      title: output.title || null,
+      supportingEvidenceIds: output.supportingEvidenceIds || null
     };
 
     await db('ai_outputs').insert(newOut);
@@ -724,8 +725,75 @@ app.post('/api/ai-outputs', authenticateToken, async (req, res) => {
   }
 });
 
+// GET agent runs for client
+app.get('/api/clients/:clientId/agent-runs', authenticateToken, async (req, res) => {
+  try {
+    const runs = await db('agent_runs').where({ clientId: req.params.clientId }).orderBy('startedAt', 'desc');
+    res.json(runs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST new agent run starting
+app.post('/api/clients/:clientId/agent-runs', authenticateToken, async (req, res) => {
+  const { taskName, agentName, campaignId, primarySourceType, primarySourceId, supportingEvidenceIds, triggeredBy, retryOfRunId } = req.body;
+  const clientId = req.params.clientId;
+  
+  if (!taskName || !agentName) {
+    return res.status(400).json({ message: 'taskName and agentName are required.' });
+  }
+  
+  try {
+    const runId = 'run_' + Math.floor(Math.random() * 10000000);
+    const newRun = {
+      id: runId,
+      clientId,
+      campaignId: campaignId || null,
+      agentName,
+      taskName,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      status: 'Running',
+      errorMessage: null,
+      outputId: null,
+      primarySourceType: primarySourceType || null,
+      primarySourceId: primarySourceId || null,
+      supportingEvidenceIds: supportingEvidenceIds || null,
+      stepLogs: JSON.stringify(['1. Reading client brief']),
+      triggeredBy: triggeredBy || req.user.name || req.user.id || 'Unknown',
+      retryOfRunId: retryOfRunId || null
+    };
+    
+    await db('agent_runs').insert(newRun);
+    res.status(201).json(newRun);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PUT update agent run final status
+app.put('/api/agent-runs/:runId', authenticateToken, async (req, res) => {
+  const { status, errorMessage, outputId, stepLogs, finishedAt } = req.body;
+  
+  try {
+    const updates = {};
+    if (status !== undefined) updates.status = status;
+    if (errorMessage !== undefined) updates.errorMessage = errorMessage;
+    if (outputId !== undefined) updates.outputId = outputId;
+    if (stepLogs !== undefined) updates.stepLogs = typeof stepLogs === 'string' ? stepLogs : JSON.stringify(stepLogs);
+    updates.finishedAt = finishedAt || new Date().toISOString();
+    
+    await db('agent_runs').where({ id: req.params.runId }).update(updates);
+    const updated = await db('agent_runs').where({ id: req.params.runId }).first();
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.put('/api/ai-outputs/:id/status', authenticateToken, async (req, res) => {
-  const { status, approvedBy = 'Irene K.' } = req.body;
+  const { status, approvedBy = 'Irene K.', feedback, requestChangesFeedback, request_changes_feedback, canvaDesignLink } = req.body;
   if (!status) {
     return res.status(400).json({ message: 'Status is required.' });
   }
@@ -742,25 +810,54 @@ app.put('/api/ai-outputs/:id/status', authenticateToken, async (req, res) => {
       updated_at: timestamp
     };
 
-    if (status === 'Approved' || status === 'Client Approved') {
-      updates.approvedBy = approvedBy;
+    const userIdentifier = approvedBy || req.user.name || req.user.id || 'Unknown';
+
+    if (status === 'Review' || status === 'Internal Review') {
+      updates.reviewedBy = userIdentifier;
+      updates.reviewed_by = userIdentifier;
+      updates.reviewedAt = timestamp;
+      updates.reviewed_at = timestamp;
+      await logAudit(req.user.id, 'CONTENT_REVIEW_REQUEST', out.clientId, out.id, `Sent draft to review.`, req);
+    } else if (status === 'Approved' || status === 'Client Approved' || status === 'Approval') {
+      updates.approvedBy = userIdentifier;
+      updates.approved_by = userIdentifier;
       updates.approvedAt = timestamp;
+      updates.approved_at = timestamp;
       await logAudit(req.user.id, 'CONTENT_APPROVAL', out.clientId, out.id, `Approved draft. Status changed to "${status}".`, req);
-    } else if (status === 'Scheduled') {
-      updates.scheduledBy = approvedBy;
+    } else if (status === 'Scheduled' || status === 'Scheduled / Published') {
+      updates.scheduledBy = userIdentifier;
+      updates.scheduled_by = userIdentifier;
       updates.scheduledAt = timestamp;
+      updates.scheduled_at = timestamp;
       await logAudit(req.user.id, 'SCHEDULING', out.clientId, out.id, `Scheduled post.`, req);
     } else if (status === 'Published') {
-      updates.publishedBy = approvedBy;
+      updates.publishedBy = userIdentifier;
+      updates.published_by = userIdentifier;
       updates.publishedAt = timestamp;
+      updates.published_at = timestamp;
       await logAudit(req.user.id, 'PUBLISHING', out.clientId, out.id, `Published content post live.`, req);
-    } else {
-      updates.approvedBy = null;
-      updates.approvedAt = null;
-      updates.scheduledBy = null;
-      updates.scheduledAt = null;
-      updates.publishedBy = null;
-      updates.publishedAt = null;
+    } else if (status === 'Brief Generated') {
+      await logAudit(req.user.id, 'CANVA_BRIEF_GENERATED', out.clientId, out.id, `Canva poster brief generated and ready for designer.`, req);
+    } else if (status === 'In Canva Design') {
+      await logAudit(req.user.id, 'CANVA_DESIGN_STARTED', out.clientId, out.id, `Poster sent to designer in Canva.`, req);
+    } else if (status === 'Canva Draft Uploaded') {
+      // Save the Canva design link if provided
+      if (canvaDesignLink) {
+        updates.canvaDesignLink = canvaDesignLink;
+      }
+      await logAudit(req.user.id, 'CANVA_DRAFT_UPLOADED', out.clientId, out.id, `Canva draft uploaded by designer.`, req);
+    }
+
+    // Save canvaDesignLink if provided at any status update
+    if (canvaDesignLink !== undefined && !updates.canvaDesignLink) {
+      updates.canvaDesignLink = canvaDesignLink;
+    }
+
+    // Set request changes feedback if reverting or specifically provided
+    const fbText = feedback || requestChangesFeedback || request_changes_feedback;
+    if (fbText !== undefined) {
+      updates.requestChangesFeedback = fbText;
+      updates.request_changes_feedback = fbText;
     }
 
     await db('ai_outputs').where({ id: req.params.id }).update(updates);
@@ -1178,7 +1275,7 @@ app.post('/api/awareness-days', authenticateToken, requireAdmin, async (req, res
 // Edit/Save AI Output Details (Full update)
 app.put('/api/ai-outputs/:id', authenticateToken, async (req, res) => {
   try {
-    const { title, platform, contentPillar, content, internalNotes, clientNotes, approvalStatus, sourceRequestId } = req.body;
+    const { title, platform, contentPillar, content, internalNotes, clientNotes, approvalStatus, sourceRequestId, canvaDesignLink } = req.body;
     const out = await db('ai_outputs').where({ id: req.params.id }).first();
     if (!out) {
       return res.status(404).json({ message: 'AI Output not found.' });
@@ -1193,6 +1290,7 @@ app.put('/api/ai-outputs/:id', authenticateToken, async (req, res) => {
     if (clientNotes !== undefined) updates.clientNotes = clientNotes;
     if (approvalStatus !== undefined) updates.approvalStatus = approvalStatus;
     if (sourceRequestId !== undefined) updates.sourceRequestId = sourceRequestId;
+    if (canvaDesignLink !== undefined) updates.canvaDesignLink = canvaDesignLink;
 
     updates.updated_at = new Date().toISOString();
 

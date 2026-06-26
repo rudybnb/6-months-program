@@ -33,7 +33,9 @@ import {
   addMediaAsset,
   updateContentDetails,
   updateTaskStatus,
-  generateInitialDeliveryPlan
+  generateInitialDeliveryPlan,
+  createAgentRun,
+  updateAgentRun
 } from './state.js';
 
 import { renderLineChart, renderBarChart } from './chart.js';
@@ -964,6 +966,674 @@ function renderOnboardingChecklistHtml(client) {
   `;
 }
 
+function startAgentRunSequence(taskId, agentId, clientId, containerEl, isRecommended = false, retryOfRunId = null) {
+  const client = state.clients.find(c => c.id === clientId);
+  if (!client) return;
+
+  const clientEvidence = state.evidence ? state.evidence.filter(e => e.clientId === client.id || e.client === client.id) : [];
+  const clientCampaigns = state.campaigns ? state.campaigns.filter(c => c.clientId === client.id || c.client === client.id) : [];
+  const task = state.tasks.find(t => t.id === taskId) || {};
+  const camp = clientCampaigns.find(c => c.id === task.campaignId) || clientCampaigns[0] || {};
+  
+  // Find linked evidence for this task/campaign
+  const linkedEvidence = clientEvidence.filter(ev => ev.campaignId === task.campaignId || (ev.clientId === client.id && !ev.campaignId));
+  const primarySourceType = linkedEvidence.length > 0 ? 'evidence' : (state.meetings && state.meetings.length > 0 ? 'meeting' : 'manual_entry');
+  const primarySourceId = linkedEvidence.length > 0 ? linkedEvidence[0].id : (state.meetings && state.meetings.length > 0 ? state.meetings[0].id : null);
+  const supportingEvidenceIds = linkedEvidence.length > 1 ? linkedEvidence.slice(1).map(x => x.id) : [];
+
+  const checklist = getAgentChecklist(agentId, client, clientEvidence, task.campaignId);
+  const isReady = checklist.every(c => c.met);
+  const missingReqs = checklist.filter(c => !c.met).map(c => c.name);
+
+  // If not ready, fail instantly
+  if (!isReady) {
+    let tab = 'basic';
+    let fieldId = 'eName';
+    const unmet = checklist.find(c => !c.met);
+    if (unmet) {
+      if (unmet.name.includes('Tone') || unmet.name.includes('Brand voice') || unmet.name.includes('voice')) { tab = 'brand'; fieldId = 'eTone'; }
+      else if (unmet.name.includes('Campaign') || unmet.name.includes('Poster message') || unmet.name.includes('CTA')) { tab = 'campaigns'; fieldId = 'ecGoal'; }
+      else if (unmet.name.includes('colours')) { tab = 'brand'; fieldId = 'eColours'; }
+      else if (unmet.name.includes('Logo')) { tab = 'brand'; fieldId = 'eLogo'; }
+      else if (unmet.name.includes('audience')) { tab = 'audience'; fieldId = 'eAudienceMain'; }
+      else if (unmet.name.includes('Funder') || unmet.name.includes('Grant') || unmet.name.includes('deadlines') || unmet.name.includes('Donor')) { tab = 'funders'; fieldId = 'eFunders'; }
+    }
+
+    const isEv = isEvidenceIssue(missingReqs);
+    const errorMsg = isEv ? 'Evidence missing for this agent' : 'Profile details missing';
+    const actionMsg = isEv ? 'Evidence missing for this agent' : `Complete the missing fields: ${missingReqs.join(', ')}`;
+    
+    // Save failed run to database
+    createAgentRun(
+      client.id,
+      task.name || 'Recommended Run',
+      getAgentNameById(agentId),
+      camp.id || null,
+      primarySourceType,
+      primarySourceId,
+      supportingEvidenceIds,
+      state.currentUserRole === 'admin' ? 'Irene K. (Admin)' : 'Bobby (Client)',
+      retryOfRunId
+    ).then(newRun => {
+      const stepLogs = ['1. Reading client brief', `❌ Failed: ${errorMsg}`];
+      if (newRun) {
+        updateAgentRun(newRun.id, 'Failed', errorMsg, null, stepLogs);
+      }
+
+      state.taskRunStates[taskId] = {
+        status: 'Failed',
+        reason: errorMsg,
+        action: actionMsg,
+        tab,
+        fieldId,
+        stepLogs: ['1. Reading client brief', `❌ Failed: ${errorMsg}`],
+        runId: newRun ? newRun.id : null,
+        lastRunTime: new Date().toLocaleTimeString('en-GB')
+      };
+
+      notify();
+    });
+
+    return;
+  }
+
+  // Create running run in DB
+  createAgentRun(
+    client.id,
+    task.name || 'Recommended Run',
+    getAgentNameById(agentId),
+    camp.id || null,
+    primarySourceType,
+    primarySourceId,
+    supportingEvidenceIds,
+    state.currentUserRole === 'admin' ? 'Irene K. (Admin)' : 'Bobby (Client)',
+    retryOfRunId
+  ).then(newRun => {
+    const runId = newRun ? newRun.id : 'run_temp_' + Math.floor(Math.random() * 100000);
+
+    state.taskRunStates[taskId] = {
+      status: 'Running',
+      runId: runId,
+      stepLogs: ['🔄 1. Reading client brief...'],
+      currentStep: 1,
+      lastRunTime: new Date().toLocaleTimeString('en-GB')
+    };
+    notify();
+
+    // Run the sequence of step updates
+    setTimeout(() => {
+      if (state.taskRunStates[taskId]) {
+        state.taskRunStates[taskId].stepLogs = [
+          '✔️ 1. Reading client brief',
+          '🔄 2. Checking campaign details...'
+        ];
+        state.taskRunStates[taskId].currentStep = 2;
+        notify();
+      }
+    }, 500);
+
+    setTimeout(() => {
+      if (state.taskRunStates[taskId]) {
+        state.taskRunStates[taskId].stepLogs = [
+          '✔️ 1. Reading client brief',
+          '✔️ 2. Checking campaign details',
+          '🔄 3. Checking linked evidence...'
+        ];
+        state.taskRunStates[taskId].currentStep = 3;
+        notify();
+      }
+    }, 1000);
+
+    setTimeout(() => {
+      if (state.taskRunStates[taskId]) {
+        state.taskRunStates[taskId].stepLogs = [
+          '✔️ 1. Reading client brief',
+          '✔️ 2. Checking campaign details',
+          '✔️ 3. Checking linked evidence',
+          '🔄 4. Generating draft output...'
+        ];
+        state.taskRunStates[taskId].currentStep = 4;
+        notify();
+      }
+    }, 1500);
+
+    setTimeout(() => {
+      if (state.taskRunStates[taskId]) {
+        state.taskRunStates[taskId].stepLogs = [
+          '✔️ 1. Reading client brief',
+          '✔️ 2. Checking campaign details',
+          '✔️ 3. Checking linked evidence',
+          '✔️ 4. Generating draft output',
+          '🔄 5. Saving to Content Board / Reports / Approval Queue...'
+        ];
+        state.taskRunStates[taskId].currentStep = 5;
+        notify();
+      }
+    }, 2000);
+
+    setTimeout(async () => {
+      if (!state.taskRunStates[taskId]) return;
+      const finalSteps = [
+        '✔️ 1. Reading client brief',
+        '✔️ 2. Checking campaign details',
+        '✔️ 3. Checking linked evidence',
+        '✔️ 4. Generating draft output',
+        '✔️ 5. Saving to Content Board / Reports / Approval Queue'
+      ];
+
+      const generatedContent = generateSimulatedAiOutputContent(agentId, client, camp.name || 'General Campaign', primarySourceId ? 'Verified findings' : 'Verified NGO activities.', client.toneOfVoice || 'Urgent', 'Draft Output', camp.targetPlatforms || 'Facebook');
+      
+      const outputTypeMap = {
+        storytelling: 'Story update',
+        socialmedia: 'Social media post',
+        'canva-brief': 'Canva brief',
+        calendar: 'Content calendar',
+        reporting: 'Donor report',
+        analytics: 'Analytics briefing',
+        'funding-comm': 'Donor advisory'
+      };
+
+      const AGENT_OUTPUT_INFO = {
+        storytelling: {
+          text: 'Storytelling Agent completed. 1 community narrative draft was created and saved to Content Board → Drafting.',
+          targetTab: 'content',
+          saveLocation: 'Content Board / Drafting'
+        },
+        socialmedia: {
+          text: 'Social Media Agent completed. 12 draft social posts were created and saved to Content Board → Drafting.',
+          targetTab: 'content',
+          saveLocation: 'Content Board / Drafting'
+        },
+        'canva-brief': {
+          text: 'Canva Poster Brief Agent completed. A full poster brief (copy, layout, colours, CTA, image suggestion, platform size & source evidence) was saved to Content Board → Brief Generated. A designer can now create the poster in Canva externally.',
+          targetTab: 'content',
+          saveLocation: 'Content Board / Brief Generated'
+        },
+        calendar: {
+          text: 'Calendar Agent completed. 1 monthly content calendar was created and saved to Content Board → Drafting.',
+          targetTab: 'content',
+          saveLocation: 'Content Board / Drafting'
+        },
+        reporting: {
+          text: 'Reporting Agent completed. 1 donor performance report was created and saved to Reports → Drafting.',
+          targetTab: 'reports',
+          saveLocation: 'Reports / Drafting'
+        },
+        analytics: {
+          text: 'Analytics Agent completed. 1 social baseline report card was created and saved to Analytics → Baseline.',
+          targetTab: 'settings',
+          saveLocation: 'Analytics / Baseline'
+        },
+        'funding-comm': {
+          text: 'Funding Comm Agent completed. 1 donor advisory update was created and saved to Content Board → Drafting.',
+          targetTab: 'content',
+          saveLocation: 'Content Board / Drafting'
+        }
+      };
+
+      const outInfo = AGENT_OUTPUT_INFO[agentId] || { text: 'Agent run complete.', targetTab: 'content', saveLocation: 'Content Board' };
+
+      try {
+        const outputPayload = {
+          clientId: client.id,
+          campaignId: camp.id || null,
+          agentId: agentId,
+          approvalStatus: agentId === 'canva-brief' ? 'Brief Generated' : 'Draft',
+          outputType: outputTypeMap[agentId] || 'Draft Output',
+          platform: camp.targetPlatforms || 'Facebook',
+          tone: client.toneOfVoice || 'Urgent',
+          confidenceScore: Math.floor(Math.random() * 8) + 92,
+          verificationStatus: 'Verified',
+          content: generatedContent,
+          title: task.name || `${outputTypeMap[agentId]} Draft`,
+          supportingEvidenceIds: supportingEvidenceIds.length > 0 ? JSON.stringify(supportingEvidenceIds) : null
+        };
+
+        if (primarySourceType === 'evidence') {
+          outputPayload.sourceEvidenceId = primarySourceId;
+        } else if (primarySourceType === 'meeting') {
+          outputPayload.sourceMeetingId = primarySourceId;
+        } else {
+          outputPayload.sourceManualEntryId = primarySourceId || 'ev_dummy';
+        }
+
+        const createdOut = await addAiOutput(outputPayload);
+
+        // Temporary console logs for debugging completion
+        console.log('--- Agent Completed Generation ---');
+        console.log('agentRunId:', runId || (newRun ? newRun.id : null));
+        console.log('outputId:', createdOut ? createdOut.id : null);
+        console.log('saved ai_output record:', createdOut);
+
+        await updateTaskStatus(taskId, 'Completed');
+
+        if (newRun) {
+          await updateAgentRun(newRun.id, 'Completed', null, createdOut ? createdOut.id : null, finalSteps);
+        }
+
+        const agentObj = state.agents.find(a => a.id === agentId);
+        if (agentObj) {
+          agentObj.tasksCompleted += 1;
+          agentObj.lastRun = 'Just now';
+        }
+
+        state.taskRunStates[taskId] = {
+          status: 'Completed',
+          message: 'Completed successfully. Output saved to Content Board / Reports / Approval Queue.',
+          outputCreated: outputTypeMap[agentId] || 'Draft Output',
+          savedLocation: outInfo.saveLocation,
+          targetTab: outInfo.targetTab,
+          stepLogs: finalSteps,
+          runId: runId,
+          outputId: createdOut ? createdOut.id : null,
+          lastRunTime: new Date().toLocaleTimeString('en-GB')
+        };
+
+        notify();
+      } catch (err) {
+        console.error(err);
+        
+        const failedReason = err.message || 'Server error during generation';
+        const failedAction = failedReason.includes('Validation failure') ? 'Select one primary source evidence and save remaining files as supporting evidence.' : 'Verify evidence availability and contract state.';
+
+        if (newRun) {
+          await updateAgentRun(newRun.id, 'Failed', failedReason, null, [...finalSteps, `❌ Failed: ${failedReason}`]);
+        }
+
+        state.taskRunStates[taskId] = {
+          status: 'Failed',
+          reason: failedReason,
+          action: failedAction,
+          stepLogs: [...finalSteps, `❌ Failed: ${failedReason}`],
+          runId: runId,
+          lastRunTime: new Date().toLocaleTimeString('en-GB')
+        };
+
+        notify();
+      }
+    }, 2500);
+  });
+}
+
+function renderTaskStatusPanelHtml(t, runState, client) {
+  if (!runState) return '';
+
+  const isRunning = runState.status === 'Running';
+  const isCompleted = runState.status === 'Completed';
+  const isFailed = runState.status === 'Failed';
+
+  let borderCol = '#bfdbfe';
+  let bgCol = '#eff6ff';
+  let textCol = '#1e40af';
+  if (isCompleted) {
+    borderCol = '#a7f3d0';
+    bgCol = '#ecfdf5';
+    textCol = '#065f46';
+  } else if (isFailed) {
+    borderCol = '#fca5a5';
+    bgCol = '#fef2f2';
+    textCol = '#991b1b';
+  }
+
+  return `
+    <div style="background:${bgCol}; border:1px solid ${borderCol}; padding:0.75rem; border-radius:8px; font-size:0.75rem; color:${textCol}; display:flex; flex-direction:column; gap:0.4rem; margin-top:0.5rem; position:relative;">
+      <button class="dismiss-task-run-btn" data-task-id="${t.id}" style="position:absolute; top:0.5rem; right:0.5rem; background:none; border:none; color:${textCol}; font-weight:bold; cursor:pointer; font-size:0.8rem; outline:none;" title="Dismiss Panel">✕</button>
+
+      <div style="display:flex; align-items:center; gap:0.5rem; font-weight:700;">
+        ${isRunning ? `
+          <span class="spinner-icon" style="display:inline-block; width:12px; height:12px; border:2px solid ${textCol}; border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite;"></span>
+          <span>Running...</span>
+          <span style="font-weight:normal; opacity:0.8; margin-left:auto;">Usually takes 10–30 seconds</span>
+        ` : (isCompleted ? `
+          <span>✅</span> Completed
+        ` : `
+          <span>❌</span> Failed
+        `)}
+      </div>
+
+      <div class="progress-steps" style="display:flex; flex-direction:column; gap:0.2rem; margin-top:0.25rem;">
+        ${(runState.stepLogs || []).map(log => `<div>${log}</div>`).join('')}
+      </div>
+
+      ${isCompleted ? `
+        <div style="margin-top:0.25rem; font-weight:500;">
+          ${runState.message || 'Completed successfully. Output saved to Content Board / Reports / Approval Queue.'}
+        </div>
+        <div style="font-size:0.7rem; opacity:0.9; margin-top:0.15rem; line-height:1.3;">
+          <strong>Output Created:</strong> ${runState.outputCreated || 'Draft Output'}<br/>
+          <strong>Where Saved:</strong> ${runState.savedLocation || 'Content Board / Drafting'}
+        </div>
+        <div style="display:flex; gap:0.5rem; margin-top:0.25rem;">
+          <button class="btn btn-xs btn-primary view-output-btn" data-output-id="${runState.outputId || ''}" data-run-id="${runState.runId || ''}" data-tab="${runState.targetTab}" style="background:#10b981; border-color:#10b981; color:white; font-weight:700; padding:0.2rem 0.5rem; border-radius:4px; font-size:0.7rem; border:none; cursor:pointer;">👁️ View Output</button>
+        </div>
+      ` : ''}
+
+      ${isFailed ? `
+        <div style="margin-top:0.25rem; font-weight:500;">
+          Reason: ${runState.reason || 'Server error during execution.'}
+        </div>
+        <div style="font-size:0.7rem; opacity:0.9; margin-top:0.15rem; line-height:1.3;">
+          <strong>Action Required:</strong> ${runState.action || 'Check configuration details.'}
+        </div>
+        <div style="display:flex; gap:0.5rem; margin-top:0.25rem;">
+          <button class="btn btn-xs btn-primary retry-agent-btn" data-task-id="${t.id}" data-agent-id="${t.responsibleAgent}" data-client-id="${client.id}" data-retry-run-id="${runState.runId || ''}" style="background:#dc2626; border-color:#dc2626; color:white; font-weight:700; padding:0.2rem 0.5rem; border-radius:4px; font-size:0.7rem; border:none; cursor:pointer;">🔄 Retry Run</button>
+          ${runState.tab ? `
+            <button class="btn btn-xs btn-outline fix-issue-btn" data-tab="${runState.tab}" data-field-id="${runState.fieldId}" style="background:white; color:#475569; padding:0.2rem 0.5rem; border-radius:4px; font-size:0.7rem; border:1px solid #cbd5e1; cursor:pointer;">🔧 Fix Issue</button>
+          ` : ''}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function openDraftDetailsPage(item, container) {
+  const modal = document.getElementById('globalModalContainer');
+  if (!modal) return;
+  
+  const client = state.clients.find(c => c.id === item.clientId || c.id === item.client) || { name: 'Unknown Client', logo: '🌱' };
+  
+  // Clean campaign lookup
+  let campaign = { name: 'General Content' };
+  if (item.campaignId) {
+    const cObj = state.campaigns.find(c => c.id === item.campaignId);
+    if (cObj) campaign = cObj;
+  } else if (item.campaign) {
+    campaign = { name: item.campaign };
+  }
+
+  // Find evidence details
+  let evidenceHtml = '<span style="color:#64748b; font-style:italic;">No evidence linked</span>';
+  if (item.sourceEvidenceId || item.evidenceId) {
+    const evId = item.sourceEvidenceId || item.evidenceId;
+    const ev = state.evidence.find(e => e.id === evId);
+    if (ev) {
+      evidenceHtml = `
+        <div style="background:#f1f5f9; padding:0.6rem; border-radius:6px; font-size:0.75rem; border:1px solid #cbd5e1; margin-top:0.25rem;">
+          <strong>File:</strong> <code>${ev.id}</code> - ${ev.name || 'Evidence Document'}<br/>
+          <strong>Excerpt:</strong> <span style="color:#475569;">"${ev.textExcerpt || 'No excerpt available.'}"</span>
+        </div>
+      `;
+    }
+  } else if (item.sourceMeetingId) {
+    const meet = state.meetings.find(m => m.id === item.sourceMeetingId);
+    if (meet) {
+      evidenceHtml = `
+        <div style="background:#f1f5f9; padding:0.6rem; border-radius:6px; font-size:0.75rem; border:1px solid #cbd5e1; margin-top:0.25rem;">
+          <strong>Meeting:</strong> ${meet.title || 'Zoom Intel Summary'}<br/>
+          <strong>Notes:</strong> <span style="color:#475569;">"${meet.notes || 'No notes available.'}"</span>
+        </div>
+      `;
+    }
+  } else if (item.sourceManualEntryId) {
+    evidenceHtml = `
+      <div style="background:#f1f5f9; padding:0.6rem; border-radius:6px; font-size:0.75rem; border:1px solid #cbd5e1; margin-top:0.25rem;">
+        <strong>Manual Entry Source:</strong> <code>${item.sourceManualEntryId}</code>
+      </div>
+    `;
+  }
+
+  let currentStatus = item.approvalStatus || item.status || 'Draft';
+  if (currentStatus === 'Ideas' || currentStatus === 'Drafting') currentStatus = 'Draft';
+  if (currentStatus === 'Internal Review') currentStatus = 'Review';
+  if (currentStatus === 'Client Approved' || currentStatus === 'Approved' || currentStatus === 'Approval') currentStatus = 'Approved';
+
+
+  const isCanvaBrief = item.agentId === 'canva-brief';
+  const canvaStatuses = ['Brief Generated', 'In Canva Design', 'Canva Draft Uploaded', 'Internal Review', 'Client Approved', 'Scheduled / Published'];
+
+  // Status colour helper for display
+  function getStatusBadgeStyle(s) {
+    if (s === 'Brief Generated') return 'background:#dbeafe; color:#1d4ed8;';
+    if (s === 'In Canva Design') return 'background:#ede9fe; color:#7c3aed;';
+    if (s === 'Canva Draft Uploaded') return 'background:#fef3c7; color:#92400e;';
+    if (s === 'Internal Review') return 'background:#fef3c7; color:#92400e;';
+    if (s === 'Client Approved') return 'background:#dcfce7; color:#15803d;';
+    if (s === 'Scheduled / Published') return 'background:#dcfce7; color:#065f46;';
+    if (s === 'Approved') return 'background:#dcfce7; color:#15803d;';
+    return 'background:#e0f2fe; color:#0369a1;';
+  }
+
+  const rawStatus = item.approvalStatus || item.status || 'Draft';
+  const displayStatus = isCanvaBrief ? rawStatus : currentStatus;
+  const headerBg = isCanvaBrief ? '#7c3aed' : '#4f46e5';
+
+  // Build Canva workflow stepper HTML
+  const canvaStepperHtml = isCanvaBrief ? `
+    <div style="background:#f5f3ff; border:1px solid #ddd6fe; padding:1rem; border-radius:8px; margin-bottom:0;">
+      <div style="font-size:0.75rem; font-weight:700; color:#5b21b6; margin-bottom:0.6rem;">🎨 Canva Poster Workflow Progress</div>
+      <div style="display:flex; align-items:center; gap:0.25rem; flex-wrap:wrap; font-size:0.65rem; font-weight:600;">
+        ${canvaStatuses.map((s, i) => {
+          const isDone = canvaStatuses.indexOf(rawStatus) > i;
+          const isCurrent = rawStatus === s;
+          return `
+            <span style="background:${isCurrent ? '#7c3aed' : (isDone ? '#10b981' : '#e2e8f0')}; color:${isCurrent ? 'white' : (isDone ? 'white' : '#64748b')}; padding:0.2rem 0.45rem; border-radius:12px; white-space:nowrap;">${isDone ? '✓ ' : (isCurrent ? '▶ ' : '')}${s}</span>
+            ${i < canvaStatuses.length - 1 ? '<span style="color:#94a3b8;">→</span>' : ''}
+          `;
+        }).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  // Canva design link section
+  const canvaLinkHtml = isCanvaBrief ? `
+    <div style="background:#f5f3ff; border:1px solid #ddd6fe; padding:1.25rem; border-radius:10px; margin-top:0.5rem; display:flex; flex-direction:column; gap:0.75rem;">
+      <div>
+        <label style="font-weight:800; display:block; margin-bottom:0.3rem; color:#5b21b6; font-size:0.85rem;">🎨 Paste final Canva design link</label>
+        <span style="font-size:0.7rem; color:#6b21a8; display:block; margin-bottom:0.5rem;">Once the designer creates the poster externally, paste the final Canva URL here to update the Content Board.</span>
+      </div>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <input type="text" id="canvaDesignLinkInput" value="${item.canvaDesignLink || ''}" placeholder="https://www.canva.com/design/..." style="flex:1; padding:0.5rem 0.75rem; border:1px solid #c4b5fd; border-radius:6px; font-size:0.8rem; outline:none; background:white; color:#0f172a;" />
+        <button class="btn btn-sm" id="btnSaveCanvaLink" style="background:#7c3aed; color:white; border:none; padding:0.5rem 0.75rem; border-radius:6px; font-weight:700; cursor:pointer; white-space:nowrap; transition: background 0.2s;">💾 Save Design Link</button>
+      </div>
+      ${item.canvaDesignLink ? `
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
+          <a href="${item.canvaDesignLink}" target="_blank" class="btn btn-sm" style="background:#10b981; color:white; text-decoration:none; padding:0.5rem 1rem; border-radius:6px; font-weight:700; font-size:0.8rem; display:inline-flex; align-items:center; gap:0.25rem; border:none; cursor:pointer;">
+            ↗️ Open Canva Design
+          </a>
+          <span style="font-size:0.7rem; color:#047857;">Link: <code style="background:#dcfce7; padding:0.1rem 0.3rem; border-radius:3px;">${item.canvaDesignLink}</code></span>
+        </div>
+      ` : `
+        <div style="font-size:0.7rem; color:#6b7280; font-style:italic;">No Canva design link saved yet.</div>
+      `}
+    </div>
+  ` : '';
+
+  const renderContent = () => {
+    modal.style.display = 'block';
+    modal.innerHTML = `
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius:12px; overflow:hidden; border:1px solid #cbd5e1; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);">
+          <div class="modal-header" style="background:${headerBg}; color:white; padding:1rem 1.5rem; display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="margin:0; font-size:1.1rem; color:white; font-weight:700;">${isCanvaBrief ? '🎨 Canva Poster Brief Review' : '📄 AI Generated Draft Review'}</h2>
+            <button class="close-modal-btn" id="closeDraftDetailsModal" style="background:none; border:none; color:white; font-size:1.5rem; cursor:pointer;">×</button>
+          </div>
+          <div class="modal-body" style="padding:1.5rem; display:flex; flex-direction:column; gap:1.25rem; font-size:0.8rem; line-height:1.5; color:#1e293b;">
+            
+            <!-- Metadata Grid -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; background:#f8fafc; padding:1rem; border-radius:8px; border:1px solid #e2e8f0;">
+              <div>
+                <strong>NGO Client:</strong> ${client.logo || '🌱'} ${client.name}<br/>
+                <strong>Campaign:</strong> ${campaign.name}<br/>
+                <strong>Agent Creator:</strong> 🤖 ${getAgentNameById(item.agentId || 'socialmedia')}
+              </div>
+              <div>
+                <strong>Workflow Stage:</strong> 
+                <span class="badge" style="font-weight:700; text-transform:uppercase; font-size:0.7rem; ${getStatusBadgeStyle(displayStatus)} padding:0.15rem 0.4rem; border-radius:4px;">
+                  ${displayStatus}
+                </span><br/>
+                <strong>Platform/Type:</strong> ${item.platform || (isCanvaBrief ? 'Poster Design' : 'Facebook')} • ${item.outputType || (isCanvaBrief ? 'Canva Poster Brief' : 'Social Post')}
+              </div>
+            </div>
+
+            <!-- Canva Workflow Stepper (canva-brief only) -->
+            ${canvaStepperHtml}
+
+            <!-- Content Area -->
+            <div>
+              <label style="font-weight:700; display:block; margin-bottom:0.4rem; color:#475569;">${isCanvaBrief ? '📋 Poster Brief (for Designer)' : 'Generated Draft Content'}</label>
+              <div id="draftContentContainer" style="background:#fafafa; border:1px solid #cbd5e1; border-radius:8px; padding:1rem; min-height:150px; white-space:pre-wrap; font-family:monospace; font-size:0.78rem; max-height: 320px; overflow-y: auto;">${item.content}</div>
+            </div>
+
+            <!-- Canva Design Link (canva-brief only) -->
+            ${canvaLinkHtml}
+
+            <!-- Linked Evidence -->
+            <div>
+              <label style="font-weight:700; display:block; margin-bottom:0.25rem; color:#475569;">Source Evidence Reference</label>
+              ${evidenceHtml}
+            </div>
+
+            <!-- Actions Row -->
+            <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; border-top:1px solid #e2e8f0; padding-top:1rem; margin-top:0.5rem;">
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-sm btn-outline" id="btnEditDraftText" style="padding:0.4rem 0.8rem; font-weight:600;">✏️ Edit Brief</button>
+                <button class="btn btn-sm btn-outline" id="btnRequestDraftChanges" style="color:#b91c1c; border-color:#fca5a5; padding:0.4rem 0.8rem; font-weight:600;">Request Changes</button>
+              </div>
+              <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                ${isCanvaBrief ? `
+                  <button class="btn btn-sm btn-outline" id="btnMarkInCanva" style="background:#ede9fe; border-color:#c4b5fd; color:#5b21b6; padding:0.4rem 0.8rem; font-weight:600;" title="Mark as sent to designer in Canva">✏️ In Canva Design</button>
+                  <button class="btn btn-sm btn-outline" id="btnMarkCanvaDraft" style="background:#fef3c7; border-color:#fde68a; color:#92400e; padding:0.4rem 0.8rem; font-weight:600;" title="Mark as Canva draft uploaded by designer">📤 Canva Draft Uploaded</button>
+                  <button class="btn btn-sm btn-outline" id="btnSendDraftReview" style="padding:0.4rem 0.8rem; font-weight:600;">👁 Internal Review</button>
+                  <button class="btn btn-sm btn-primary" id="btnApproveDraft" style="background:#10b981; border-color:#10b981; color:white; padding:0.4rem 1rem; font-weight:700;">✓ Client Approved</button>
+                  <button class="btn btn-sm btn-outline" id="btnScheduleDraft" style="background:#dcfce7; border-color:#86efac; color:#166534; padding:0.4rem 0.8rem; font-weight:600;">📅 Scheduled / Published</button>
+                ` : `
+                  <button class="btn btn-sm btn-outline" id="btnSendDraftReview" style="padding:0.4rem 0.8rem; font-weight:600;">Send to Review</button>
+                  <button class="btn btn-sm btn-primary" id="btnApproveDraft" style="background:#10b981; border-color:#10b981; color:white; padding:0.4rem 1rem; font-weight:700;">Approve</button>
+                  <button class="btn btn-sm btn-outline" id="btnScheduleDraft" style="padding:0.4rem 0.8rem; font-weight:600;">Schedule</button>
+                  <button class="btn btn-sm btn-outline" id="btnPublishDraft" style="padding:0.4rem 0.8rem; font-weight:600;">Publish</button>
+                `}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Bind close
+    document.getElementById('closeDraftDetailsModal').addEventListener('click', () => {
+      modal.style.display = 'none';
+    });
+
+    // Edit Draft Toggle
+    let isEditing = false;
+    document.getElementById('btnEditDraftText').addEventListener('click', () => {
+      const containerText = document.getElementById('draftContentContainer');
+      if (!isEditing) {
+        containerText.innerHTML = `<textarea id="editDraftTextarea" style="width:100%; height:200px; font-family:monospace; font-size:0.78rem; padding:0.5rem; border:1px solid #7c3aed; border-radius:6px; outline:none; resize:vertical;">${item.content}</textarea>`;
+        document.getElementById('btnEditDraftText').innerHTML = '💾 Save Text';
+        isEditing = true;
+      } else {
+        const newText = document.getElementById('editDraftTextarea').value;
+        item.content = newText;
+        updateContentDetails(item.id, { content: newText }).then(() => {
+          containerText.innerText = newText;
+          document.getElementById('btnEditDraftText').innerHTML = '✏️ Edit Brief';
+          isEditing = false;
+          notify();
+        });
+      }
+    });
+
+    // Request Changes
+    document.getElementById('btnRequestDraftChanges').addEventListener('click', () => {
+      const note = prompt('Enter change requests or feedback for this draft:');
+      if (note !== null) {
+        updateContentStatus(item.id, 'Ideas', { requestChangesFeedback: note }).then(() => {
+          alert('Changes requested. Draft status reset to Draft.');
+          modal.style.display = 'none';
+          notify();
+        });
+      }
+    });
+
+    // Save Canva Design Link (canva-brief only)
+    if (isCanvaBrief) {
+      document.getElementById('btnSaveCanvaLink').addEventListener('click', () => {
+        const link = document.getElementById('canvaDesignLinkInput').value.trim();
+        if (!link) { alert('Please enter a valid Canva design URL.'); return; }
+        updateAiOutputStatus(item.id, rawStatus, 'Irene K.', { canvaDesignLink: link }).then(() => {
+          item.canvaDesignLink = link;
+          alert('✅ Canva design link saved!');
+          // Re-render the modal in-place so they see "Open Canva Design" immediately
+          openDraftDetailsPage(item, container);
+        });
+      });
+
+      // In Canva Design
+      document.getElementById('btnMarkInCanva').addEventListener('click', () => {
+        updateContentStatus(item.id, 'In Canva Design').then(() => {
+          alert('Status updated to "In Canva Design". Designer can now create the poster in Canva.');
+          modal.style.display = 'none';
+          notify();
+        });
+      });
+
+      // Canva Draft Uploaded
+      document.getElementById('btnMarkCanvaDraft').addEventListener('click', () => {
+        const link = document.getElementById('canvaDesignLinkInput').value.trim();
+        const confirmMsg = link 
+          ? `Mark as "Canva Draft Uploaded" and save design link?`
+          : `Mark as "Canva Draft Uploaded"? (You can also save the Canva link first)`;
+        if (confirm(confirmMsg)) {
+          updateAiOutputStatus(item.id, 'Canva Draft Uploaded', 'Irene K.', { canvaDesignLink: link || undefined }).then(() => {
+            alert('Status updated to "Canva Draft Uploaded". Ready for internal review.');
+            modal.style.display = 'none';
+            notify();
+          });
+        }
+      });
+    }
+
+    // Send to Review
+    document.getElementById('btnSendDraftReview').addEventListener('click', () => {
+      const newStatus = isCanvaBrief ? 'Internal Review' : 'Review';
+      updateContentStatus(item.id, newStatus).then(() => {
+        alert(`Draft sent to Internal Review.`);
+        modal.style.display = 'none';
+        notify();
+      });
+    });
+
+    // Approve
+    document.getElementById('btnApproveDraft').addEventListener('click', () => {
+      const newStatus = isCanvaBrief ? 'Client Approved' : 'Approval';
+      updateContentStatus(item.id, newStatus).then(() => {
+        alert(isCanvaBrief ? 'Poster approved by client!' : 'Draft approved successfully!');
+        modal.style.display = 'none';
+        notify();
+      });
+    });
+
+    // Schedule / Publish
+    document.getElementById('btnScheduleDraft').addEventListener('click', () => {
+      const newStatus = isCanvaBrief ? 'Scheduled / Published' : 'Scheduled';
+      updateContentStatus(item.id, newStatus).then(() => {
+        alert(isCanvaBrief ? 'Poster marked as Scheduled / Published.' : 'Draft successfully scheduled for publication.');
+        modal.style.display = 'none';
+        notify();
+      });
+    });
+
+    // Publish (standard agents only)
+    if (!isCanvaBrief) {
+      const btnPublish = document.getElementById('btnPublishDraft');
+      if (btnPublish) {
+        btnPublish.addEventListener('click', () => {
+          updateContentStatus(item.id, 'Published').then(() => {
+            alert('Draft published successfully!');
+            modal.style.display = 'none';
+            notify();
+          });
+        });
+      }
+    }
+  };
+
+  renderContent();
+}
+
+
 function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, clientTasks, metrics) {
   const comp = calculateBriefCompletion(client);
   const allMissing = [];
@@ -976,9 +1646,9 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
 
   const hasEvidence = clientEvidence.length > 0;
   const hasContent = clientContent.length > 0 || clientReports.length > 0;
-  const hasReview = clientContent.some(c => c.approvalStatus === 'Internal Review') || clientReports.some(r => r.status === 'Pending Review');
-  const hasApprove = clientContent.some(c => c.approvalStatus === 'Client Approved' || c.approvalStatus === 'Sent to Client') || clientReports.some(r => r.status === 'Sent to Client');
-  const hasPublish = clientContent.some(c => c.status === 'Published') || clientReports.some(r => r.status === 'Submitted');
+  const hasReview = clientContent.some(c => ['Internal Review', 'Canva Draft Uploaded', 'In Canva Design'].includes(c.approvalStatus)) || clientReports.some(r => r.status === 'Pending Review');
+  const hasApprove = clientContent.some(c => ['Client Approved', 'Sent to Client'].includes(c.approvalStatus)) || clientReports.some(r => r.status === 'Sent to Client');
+  const hasPublish = clientContent.some(c => ['Published', 'Scheduled / Published'].includes(c.status || c.approvalStatus)) || clientReports.some(r => r.status === 'Submitted');
 
   const stepperHtml = `
     <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1.25rem; border-radius:12px; margin-bottom:1.5rem;">
@@ -1003,26 +1673,60 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
         </div>
         <div style="color:#64748b;">➔</div>
 
-        <div style="display:flex; align-items:center; gap:0.25rem; color:${hasReview ? '#15803d' : '#64748b'}; font-weight:${hasReview ? '600' : 'normal'};">
+        <div class="step-trigger" data-step="Review" style="display:flex; align-items:center; gap:0.25rem; color:${hasReview ? '#15803d' : '#64748b'}; font-weight:${hasReview ? '600' : 'normal'}; cursor:pointer;" title="Click to view Review items">
           <span style="background:${hasReview ? '#dcfce7' : 'white'}; border:2px solid ${hasReview ? '#15803d' : '#cbd5e1'}; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">${hasReview ? '✓' : '4'}</span>
-          <span>Review</span>
+          <span style="text-decoration:underline;">Review</span>
         </div>
         <div style="color:#64748b;">➔</div>
 
-        <div style="display:flex; align-items:center; gap:0.25rem; color:${hasApprove ? '#15803d' : '#64748b'}; font-weight:${hasApprove ? '600' : 'normal'};">
+        <div class="step-trigger" data-step="Approve" style="display:flex; align-items:center; gap:0.25rem; color:${hasApprove ? '#15803d' : '#64748b'}; font-weight:${hasApprove ? '600' : 'normal'}; cursor:pointer;" title="Click to view Approved items">
           <span style="background:${hasApprove ? '#dcfce7' : 'white'}; border:2px solid ${hasApprove ? '#15803d' : '#cbd5e1'}; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">${hasApprove ? '✓' : '5'}</span>
-          <span>Approve</span>
+          <span style="text-decoration:underline;">Approve</span>
         </div>
         <div style="color:#64748b;">➔</div>
 
-        <div style="display:flex; align-items:center; gap:0.25rem; color:${hasPublish ? '#15803d' : '#64748b'}; font-weight:${hasPublish ? '600' : 'normal'};">
+        <div class="step-trigger" data-step="Publish/Report" style="display:flex; align-items:center; gap:0.25rem; color:${hasPublish ? '#15803d' : '#64748b'}; font-weight:${hasPublish ? '600' : 'normal'}; cursor:pointer;" title="Click to view Scheduled/Published items">
           <span style="background:${hasPublish ? '#dcfce7' : 'white'}; border:2px solid ${hasPublish ? '#15803d' : '#cbd5e1'}; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">${hasPublish ? '✓' : '6'}</span>
-          <span>Publish/Report</span>
+          <span style="text-decoration:underline;">Publish/Report</span>
         </div>
 
       </div>
     </div>
   `;
+
+  let stageItemsHtml = '';
+  if (state.selectedWorkflowStage) {
+    const stage = state.selectedWorkflowStage;
+    let filteredItems = [];
+    if (stage === 'Review') {
+      filteredItems = state.content.filter(c => c.client === client.id && ['Review', 'Draft', 'Brief Generated', 'In Canva Design', 'Canva Draft Uploaded', 'Internal Review'].includes(c.approvalStatus || c.status));
+    } else if (stage === 'Approve') {
+      filteredItems = state.content.filter(c => c.client === client.id && ['Approval', 'Client Approved', 'Approved'].includes(c.approvalStatus || c.status));
+    } else if (stage === 'Publish/Report') {
+      filteredItems = state.content.filter(c => c.client === client.id && ['Scheduled', 'Published', 'Scheduled / Published'].includes(c.approvalStatus || c.status));
+    }
+
+    stageItemsHtml = `
+      <div class="card p-4 mb-4" style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+          <h4 style="margin:0; font-size:0.9rem; font-weight:700; color:#166534; text-transform:none;">📦 Workflow stage items: ${stage} (${filteredItems.length})</h4>
+          <button id="btnCloseWorkflowStage" style="background:none; border:none; color:#166534; font-weight:bold; cursor:pointer; outline:none;">✕ Close Panel</button>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:0.75rem;">
+          ${filteredItems.map(item => `
+            <div class="workflow-stage-item card p-3" data-item-id="${item.id}" style="background:white; border:1px solid #cbd5e1; border-radius:8px; cursor:pointer; transition: transform 0.2s; display:flex; flex-direction:column; gap:0.25rem;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="platform-badge" style="font-size:0.65rem; background:#e0f2fe; color:#0369a1; padding:1px 4px; border-radius:4px;">${item.platform || 'Facebook'}</span>
+                <span style="font-size:0.65rem; background:#ecfdf5; color:#065f46; padding:0.1rem 0.25rem; border-radius:4px; font-weight:600;">${item.approvalStatus || item.status}</span>
+              </div>
+              <strong style="font-size:0.75rem; color:#0f172a; margin-top:0.25rem;">${item.title || 'Untitled Post'}</strong>
+              <span style="font-size:0.65rem; color:#64748b;">${item.campaign || 'General Campaign'}</span>
+            </div>
+          `).join('') || `<div style="font-size:0.75rem; color:#64748b; font-style:italic;">No items currently in this stage.</div>`}
+        </div>
+      </div>
+    `;
+  }
 
   const pendingTask = clientTasks.find(t => t.status === 'Pending');
   const nextRecommendedAction = pendingTask 
@@ -1035,18 +1739,50 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
     </h3>
     
     ${stepperHtml}
+    ${stageItemsHtml}
 
     <div style="display:grid; grid-template-columns: 2fr 1.2fr; gap:1.5rem; align-items:start;">
       
       <!-- Left Column -->
       <div>
         
+        <style>
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
+
         <!-- Next Recommended Action Alert -->
         <div style="background:#e0f2fe; border:1px solid #bae6fd; padding:1rem; border-radius:10px; color:#0369a1; margin-bottom:1.5rem; font-size:0.8rem;">
           <div style="font-weight:700; display:flex; align-items:center; gap:0.4rem; font-size:0.85rem;">
             <span>💡</span> Next Recommended Action:
           </div>
           <div style="margin-top:0.25rem; line-height:1.4;">${nextRecommendedAction}</div>
+          
+          ${pendingTask && state.taskRunStates[pendingTask.id] ? `
+            <div style="margin-top:0.5rem;">
+              ${renderTaskStatusPanelHtml(pendingTask, state.taskRunStates[pendingTask.id], client)}
+            </div>
+          ` : (pendingTask ? (() => {
+              const checklist = getAgentChecklist(pendingTask.responsibleAgent, client, clientEvidence, pendingTask.campaignId);
+              const missingReqs = checklist.filter(c => !c.met).map(c => c.name);
+              const isReady = checklist.every(c => c.met);
+              if (isReady) {
+                return `
+                  <button class="btn btn-xs btn-primary run-rec-agent-btn" data-task-id="${pendingTask.id}" data-agent-id="${pendingTask.responsibleAgent}" data-client-id="${client.id}" style="background:#4f46e5; border-color:#4f46e5; color:white; font-weight:700; padding:0.4rem 1rem; border-radius:6px; cursor:pointer; border:none; font-size:0.75rem; margin-top:0.5rem; display:inline-flex; align-items:center; gap:0.25rem;">
+                    ⚡ Run Recommended Agent (${getAgentNameById(pendingTask.responsibleAgent)})
+                  </button>
+                `;
+              } else {
+                return `
+                  <span style="display:block; margin-top:0.5rem; font-size:0.7rem; color:#b91c1c; font-weight:600;">
+                    ⚠️ Recommended agent is not ready. ${getMissingMessage(missingReqs)}
+                  </span>
+                `;
+              }
+            })() : '')}
+          <div class="agent-run-status-container" id="run-status-rec" style="display:none; margin-top:0.5rem;"></div>
         </div>
 
         <!-- Real Database Agent Tasks Section -->
@@ -1055,21 +1791,125 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
           <div class="task-list-container" style="display:flex; flex-direction:column; gap:0.75rem;">
             ${clientTasks.map(t => {
               const isCompleted = t.status === 'Completed';
-              const camp = state.campaigns.find(c => c.id === t.campaignId);
+              const camp = state.campaigns.find(c => c.id === t.campaignId || c.clientId === client.id);
               const campName = camp ? camp.name : 'General';
+              
+              // Dynamic Evidence Linkage (incorporating general workspace fallback)
+              const linkedEvidence = clientEvidence.filter(ev => ev.campaignId === t.campaignId || (ev.clientId === client.id && !ev.campaignId));
+              
+              // Agent readiness checklist
+              const checklist = getAgentChecklist(t.responsibleAgent, client, clientEvidence, t.campaignId);
+              const missingReqs = checklist.filter(c => !c.met).map(c => c.name);
+              const isReady = checklist.every(c => c.met);
+              
+              // Check live UI state
+              const runState = state.taskRunStates[t.id];
+              const hasLiveRun = !!runState;
+              
+              // Fetch persistent run history from DB
+              const runsForTask = (state.agentRuns || []).filter(r => r.taskName === t.name && r.clientId === client.id);
+              const lastRun = runsForTask[0];
+              let lastRunHtml = '';
+              if (lastRun) {
+                const isLastSuccess = lastRun.status === 'Completed';
+                lastRunHtml = `
+                  <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #e2e8f0; font-size: 0.7rem; color: #475569; line-height:1.4;">
+                    <strong>Run History:</strong> <br/>
+                    • Status: <span style="color: ${isLastSuccess ? '#10b981' : '#ef4444'}; font-weight: 700;">${lastRun.status}</span> <br/>
+                    • Last run time: ${new Date(lastRun.startedAt).toLocaleString()} <br/>
+                    ${lastRun.errorMessage ? `• Error message if failed: <span style="color:#b91c1c; font-weight:500;">${lastRun.errorMessage}</span><br/>` : ''}
+                    ${lastRun.outputId ? `• Output created: <code>${lastRun.outputId}</code> (Saved to Content Board / Reports / Approval Queue)<br/>` : ''}
+                  </div>
+                `;
+              } else {
+                lastRunHtml = `
+                  <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #e2e8f0; font-size: 0.7rem; color: #64748b; font-style: italic;">
+                    Run History: Not started
+                  </div>
+                `;
+              }
+
               return `
-                <div class="task-item-row" style="display:flex; align-items:flex-start; gap:0.75rem; background:#f8fafc; border:1px solid ${isCompleted ? '#e2e8f0' : '#cbd5e1'}; padding:0.85rem; border-radius:8px; opacity:${isCompleted ? 0.7 : 1};">
-                  <input type="checkbox" class="task-checkbox" data-task-id="${t.id}" ${isCompleted ? 'checked' : ''} style="margin-top:0.25rem; width:1.05rem; height:1.05rem; cursor:pointer;" />
-                  <div style="flex-grow:1; font-size:0.8rem; line-height:1.4;">
-                    <div style="font-weight:600; color:${isCompleted ? '#64748b' : '#0f172a'}; text-decoration:${isCompleted ? 'line-through' : 'none'};">${t.name}</div>
-                    <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.4rem; font-size:0.68rem; color:#64748b;">
-                      <span style="background:#f1f5f9; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600;">🤖 ${getAgentNameById(t.responsibleAgent)}</span>
-                      ${t.campaignId ? `<span style="background:#e0f2fe; color:#0369a1; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600;">🎯 Campaign: ${campName}</span>` : ''}
-                      <span style="background:#fee2e2; color:#991b1b; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600;">📋 Evidence: ${t.requiredEvidence || 'Not yet provided'}</span>
-                      ${t.dueDate ? `<span style="background:#fef3c7; color:#78350f; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600;">⏰ Due: ${t.dueDate}</span>` : ''}
-                      <span style="background:${t.priority === 'High' ? '#fee2e2; color:#991b1b;' : (t.priority === 'Medium' ? '#fef3c7; color:#78350f;' : '#f0fdf4; color:#166534;')}; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600; text-transform:uppercase;">${t.priority || 'Medium'}</span>
+                <div class="task-item-row" style="display:flex; flex-direction:column; gap:0.5rem; background:#f8fafc; border:1px solid ${isCompleted ? '#e2e8f0' : '#cbd5e1'}; padding:1rem; border-radius:12px; opacity:${isCompleted ? 0.8 : 1}; box-shadow:var(--shadow-sm);">
+                  <!-- Header Row -->
+                  <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <input type="checkbox" class="task-checkbox" data-task-id="${t.id}" ${isCompleted ? 'checked' : ''} style="width:1.1rem; height:1.1rem; cursor:pointer;" />
+                    <div style="font-weight:700; font-size:0.85rem; color:${isCompleted ? '#64748b' : '#0f172a'}; text-decoration:${isCompleted ? 'line-through' : 'none'}; flex-grow:1;">
+                      ${t.name}
+                    </div>
+                    <span class="badge ${t.priority === 'High' ? 'danger' : 'info'}" style="font-size:0.65rem; padding:0.15rem 0.4rem; text-transform:uppercase;">${t.priority || 'Medium'}</span>
+                  </div>
+
+                  <!-- Metadata Grid -->
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.7rem; color:#64748b; background:#f1f5f9; padding:0.6rem; border-radius:8px; margin-top:0.25rem;">
+                    <div><strong>Client ID:</strong> <code>${client.id}</code></div>
+                    <div><strong>Campaign ID:</strong> <code>${t.campaignId || 'General'}</code></div>
+                    <div style="grid-column: span 2;">
+                      <strong>Linked Evidence:</strong> 
+                      ${linkedEvidence.length > 0 
+                        ? linkedEvidence.map(ev => {
+                            const isGeneral = !ev.campaignId;
+                            const label = isGeneral ? `${ev.id} (General Client Evidence)` : ev.id;
+                            const bg = isGeneral ? '#fef3c7' : '#dcfce7';
+                            const fg = isGeneral ? '#b45309' : '#15803d';
+                            return `<code style="background:${bg}; color:${fg}; padding:0.1rem 0.35rem; border-radius:3px; font-size:0.65rem; margin-right:0.2rem; display:inline-block; margin-bottom:0.2rem;">${label}</code>`;
+                          }).join('') 
+                        : `<span style="color:#b91c1c; font-weight:600;">⚠️ Evidence not provided</span>`}
+                    </div>
+                    <div><strong>Due Date:</strong> ${t.dueDate || 'N/A'}</div>
+                    
+                    <div style="grid-column: span 2; border-top:1px solid #e2e8f0; padding-top:0.4rem; margin-top:0.2rem;">
+                      <strong>Agent:</strong> 🤖 ${getAgentNameById(t.responsibleAgent)} <br/>
+                      <strong>Readiness:</strong> 
+                      <span class="badge-status ${isReady ? 'green' : 'red'}" style="font-size:0.65rem; padding:0.1rem 0.35rem; font-weight:700;">
+                        ${isReady ? 'Ready to run' : 'Not Ready'}
+                      </span>
+                      ${!isReady ? `<br/><span style="color:#b91c1c; font-size:0.65rem; font-weight:500;">${getMissingMessage(missingReqs)}</span>` : ''}
                     </div>
                   </div>
+
+                  <!-- Last Run Metadata indicator -->
+                  ${lastRunHtml}
+
+                  <!-- Live Progress / Run Panel -->
+                  ${hasLiveRun ? renderTaskStatusPanelHtml(t, runState, client) : ''}
+
+                  <!-- Action Buttons (Hidden when panel is visible) -->
+                  <div class="agent-action-buttons-wrapper-${t.id}" style="${hasLiveRun ? 'display:none;' : ''}">
+                    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.4rem;">
+                      ${(() => {
+                        const canvaBriefOutput = t.responsibleAgent === 'canva-brief'
+                          ? state.aiOutputs.find(o => o.clientId === client.id && o.agentId === 'canva-brief')
+                          : null;
+                        if (canvaBriefOutput) {
+                          return `
+                            <button class="btn btn-xs btn-primary view-canva-brief-btn" data-output-id="${canvaBriefOutput.id}" style="background:#7c3aed; border-color:#7c3aed; color:white; font-weight:700; padding:0.25rem 0.75rem; border-radius:6px; cursor:pointer; border:none; font-size:0.7rem;">👁️ View Canva Brief</button>
+                          `;
+                        }
+                        if (isReady) {
+                          return `
+                            <button class="btn btn-xs btn-primary run-agent-btn" data-task-id="${t.id}" data-agent-id="${t.responsibleAgent}" data-client-id="${client.id}" style="background:#10b981; border-color:#10b981; color:white; font-weight:700; padding:0.25rem 0.75rem; border-radius:6px; cursor:pointer; border:none; font-size:0.7rem;">🚀 Run Agent Now</button>
+                          `;
+                        }
+                        const unmet = checklist.find(c => !c.met);
+                        let tab = 'basic';
+                        let fieldId = 'eName';
+                        if (unmet) {
+                          if (unmet.name.includes('Tone') || unmet.name.includes('Brand voice') || unmet.name.includes('voice')) { tab = 'brand'; fieldId = 'eTone'; }
+                          else if (unmet.name.includes('Campaign') || unmet.name.includes('Poster message') || unmet.name.includes('CTA')) { tab = 'campaigns'; fieldId = 'ecGoal'; }
+                          else if (unmet.name.includes('colours')) { tab = 'brand'; fieldId = 'eColours'; }
+                          else if (unmet.name.includes('Logo')) { tab = 'brand'; fieldId = 'eLogo'; }
+                          else if (unmet.name.includes('audience')) { tab = 'audience'; fieldId = 'eAudienceMain'; }
+                          else if (unmet.name.includes('Brand / Design Evidence') || unmet.name.includes('Canva template') || unmet.name.includes('poster example')) { tab = 'brand'; fieldId = 'eCanva'; }
+                          else if (unmet.name.includes('Funder') || unmet.name.includes('Grant') || unmet.name.includes('deadlines') || unmet.name.includes('Donor')) { tab = 'funders'; fieldId = 'eFunders'; }
+                        }
+                        return `
+                          <button class="btn btn-xs btn-outline complete-field-now-btn" data-client-id="${client.id}" data-tab="${tab}" data-field-id="${fieldId}" style="font-weight:700; padding:0.25rem 0.75rem; border-radius:6px; font-size:0.7rem; border:1px solid #cbd5e1; background:white; color:#475569; cursor:pointer;">✏️ Complete Now</button>
+                        `;
+                      })()}
+                    </div>
+                  </div>
+                  <div class="agent-run-status-container" id="run-status-${t.id}" style="display:none; margin-top:0.5rem;"></div>
                 </div>
               `;
             }).join('')}
@@ -1120,53 +1960,30 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
           <h4 style="margin:0 0 1rem 0; font-size:0.95rem; font-weight:700; color:#0f172a; text-transform:none;">🤖 AI Specialist Agent Capabilities & Readiness Grid</h4>
           <div style="display:flex; flex-direction:column; gap:0.75rem;">
             ${state.agents.map(a => {
-              let readyText = '';
-              let waitingText = 'None - Ready to run!';
-              let isReady = true;
+              const clientCampaigns = state.campaigns ? state.campaigns.filter(c => c.clientId === client.id || c.client === client.id) : [];
+              const mainCamp = clientCampaigns[0] || {};
+              const checklist = getAgentChecklist(a.id, client, clientEvidence, mainCamp.id);
+              const isReady = checklist.every(c => c.met);
+              const missingReqs = checklist.filter(c => !c.met).map(c => c.name);
 
+              let readyText = '';
               if (a.id === 'storytelling') {
                 readyText = `Draft community narrative based on problem statement: "${client.goalsProblem || 'Not yet provided'}".`;
-                if (!client.toneOfVoice || !client.mission) {
-                  isReady = false;
-                  waitingText = `Awaiting: Tone of Voice, Mission details.`;
-                }
               } else if (a.id === 'socialmedia') {
                 readyText = `Draft platforms updates for: "${client.contentPlatforms || 'Not yet provided'}".`;
-                if (!client.socialHandles || !client.approvedHashtags) {
-                  isReady = false;
-                  waitingText = `Awaiting: Social handles, Approved hashtags.`;
-                }
               } else if (a.id === 'canva-brief') {
                 readyText = `Outline Canva design specifications matching style: "${client.writingStyle || 'Not yet provided'}".`;
-                if (!client.fonts || !client.brandColours) {
-                  isReady = false;
-                  waitingText = `Awaiting: Brand fonts, Brand colours.`;
-                }
               } else if (a.id === 'calendar') {
                 readyText = `Plan posting calendar targeting campaign: "${client.campaignName || 'Not yet provided'}".`;
-                if (!client.campaignFrequency || !client.renewalDate) {
-                  isReady = false;
-                  waitingText = `Awaiting: Campaign frequency, Renewal date.`;
-                }
               } else if (a.id === 'reporting') {
                 readyText = `Prepare donor report for: "${client.currentFunders || 'Not yet provided'}".`;
-                if (!client.requiredImpactMetrics || !client.reportingDeadlines) {
-                  isReady = false;
-                  waitingText = `Awaiting: Required impact metrics, Reporting deadlines.`;
-                }
               } else if (a.id === 'analytics') {
                 readyText = `Analyze reach metrics against baseline followers: ${((client.fbFollowers || 0) + (client.igFollowers || 0)) || 'Not yet provided'}.`;
-                if (!client.fbPageUrl || !client.igHandle) {
-                  isReady = false;
-                  waitingText = `Awaiting: Facebook URL, Instagram handle.`;
-                }
               } else if (a.id === 'funding-comm') {
                 readyText = `Draft donor updates matching funding opportunity: "${client.grantNames || 'Not yet provided'}".`;
-                if (!client.grantNames || !client.requiredEvidence) {
-                  isReady = false;
-                  waitingText = `Awaiting: Grant names, Required evidence.`;
-                }
               }
+
+              const waitingText = isReady ? 'None - Ready to run!' : getMissingMessage(missingReqs);
 
               return `
                 <div style="background:#faf5ff; border:1px solid #e9d5ff; border-left:4px solid ${isReady ? '#10b981' : '#a855f7'}; padding:0.75rem; border-radius:8px; font-size:0.75rem; display:grid; grid-template-columns: 1fr 1.5fr 1fr; gap:0.5rem;">
@@ -1176,6 +1993,111 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
                 </div>
               `;
             }).join('')}
+          </div>
+        </div>
+
+        <!-- Agent Activity Log Card -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+          <h4 style="margin:0 0 1rem 0; font-size:0.95rem; font-weight:700; color:#0f172a; text-transform:none;">📋 Agent Activity Log</h4>
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left;">
+              <thead>
+                <tr style="border-bottom:2px solid #e2e8f0; color:#475569; font-weight:600;">
+                  <th style="padding:0.5rem 0.25rem;">Agent Name</th>
+                  <th style="padding:0.5rem 0.25rem;">Start Time</th>
+                  <th style="padding:0.5rem 0.25rem;">End Time</th>
+                  <th style="padding:0.5rem 0.25rem;">Status</th>
+                  <th style="padding:0.5rem 0.25rem;">Output Created</th>
+                  <th style="padding:0.5rem 0.25rem;">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(state.agentActivityLogs || []).map(log => {
+                  const isSuccess = log.status === 'Completed' || log.status === 'success';
+                  const statusColor = isSuccess ? '#10b981' : (log.status === 'Failed' ? '#ef4444' : '#f59e0b');
+                  return `
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                      <td style="padding:0.5rem 0.25rem; font-weight:600; color:#334155;">🤖 ${log.agent || 'AI Agent'}</td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;">${log.startTime || log.timestamp || 'N/A'}</td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;">${log.completedTime || log.timestamp || 'N/A'}</td>
+                      <td style="padding:0.5rem 0.25rem;">
+                        <span style="color:${statusColor}; font-weight:700; font-size:0.65rem; text-transform:uppercase;">${log.status || 'Completed'}</span>
+                      </td>
+                      <td style="padding:0.5rem 0.25rem; color:#475569;">${log.outputCreated || log.message || 'N/A'}</td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b; font-size:0.65rem; line-height:1.3;">
+                        <strong>Client:</strong> <code>${log.clientId || client.id}</code><br/>
+                        <strong>Campaign:</strong> <code>${log.campaignId || 'General'}</code><br/>
+                        <strong>Evidence:</strong> <code>${log.evidenceId || 'None'}</code>
+                      </td>
+                    </tr>
+                  `;
+                }).join('') || `<tr><td colspan="6" style="padding:1rem; text-align:center; color:#94a3b8; font-style:italic;">No agent activity recorded yet.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Agent Run History Card -->
+        <div class="card p-4 mb-4" style="background:white; border:1px solid var(--border-color); border-radius:12px;">
+          <h4 style="margin:0 0 1rem 0; font-size:0.95rem; font-weight:700; color:#0f172a; text-transform:none;">⚡ Agent Run History</h4>
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; min-width:800px;">
+              <thead>
+                <tr style="border-bottom:2px solid #e2e8f0; color:#475569; font-weight:600;">
+                  <th style="padding:0.5rem 0.25rem;">Agent Name</th>
+                  <th style="padding:0.5rem 0.25rem;">Task Name</th>
+                  <th style="padding:0.5rem 0.25rem;">Started At</th>
+                  <th style="padding:0.5rem 0.25rem;">Finished At</th>
+                  <th style="padding:0.5rem 0.25rem;">Status</th>
+                  <th style="padding:0.5rem 0.25rem;">Error Message</th>
+                  <th style="padding:0.5rem 0.25rem;">Output ID</th>
+                  <th style="padding:0.5rem 0.25rem;">Linked Client</th>
+                  <th style="padding:0.5rem 0.25rem;">Linked Campaign</th>
+                  <th style="padding:0.5rem 0.25rem;">Primary Source</th>
+                  <th style="padding:0.5rem 0.25rem;">Supporting Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(state.agentRuns || []).map(run => {
+                  const isSuccess = run.status === 'Completed';
+                  const statusColor = isSuccess ? '#10b981' : (run.status === 'Failed' ? '#ef4444' : '#f59e0b');
+                  let supportingList = '-';
+                  if (run.supportingEvidenceIds) {
+                    try {
+                      const ids = JSON.parse(run.supportingEvidenceIds);
+                      if (Array.isArray(ids)) {
+                        supportingList = ids.map(id => `<code style="background:#f1f5f9; padding:0.1rem 0.2rem; border-radius:3px; font-size:0.65rem; margin-right:0.15rem;">${id}</code>`).join('');
+                      } else {
+                        supportingList = `<code>${run.supportingEvidenceIds}</code>`;
+                      }
+                    } catch (e) {
+                      supportingList = `<code>${run.supportingEvidenceIds}</code>`;
+                    }
+                  }
+                  return `
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                      <td style="padding:0.5rem 0.25rem; font-weight:600; color:#334155;">🤖 ${run.agentName}</td>
+                      <td style="padding:0.5rem 0.25rem; color:#475569;">${run.taskName}</td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;">${run.startedAt ? new Date(run.startedAt).toLocaleString() : 'N/A'}</td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;">${run.finishedAt ? new Date(run.finishedAt).toLocaleString() : 'N/A'}</td>
+                      <td style="padding:0.5rem 0.25rem;">
+                        <span style="color:${statusColor}; font-weight:700; font-size:0.65rem; text-transform:uppercase;">${run.status}</span>
+                      </td>
+                      <td style="padding:0.5rem 0.25rem; color:#ef4444; font-size:0.7rem; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${run.errorMessage || ''}">${run.errorMessage || '-'}</td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;"><code>${run.outputId || '-'}</code></td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;"><code>${run.clientId}</code></td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;"><code>${run.campaignId || 'General'}</code></td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;">
+                        <span style="font-size:0.65rem; background:#e0f2fe; color:#0369a1; padding:0.1rem 0.3rem; border-radius:4px; font-weight:500;">
+                          ${run.primarySourceType || 'N/A'}: ${run.primarySourceId || 'N/A'}
+                        </span>
+                      </td>
+                      <td style="padding:0.5rem 0.25rem; color:#64748b;">${supportingList}</td>
+                    </tr>
+                  `;
+                }).join('') || `<tr><td colspan="11" style="padding:1rem; text-align:center; color:#94a3b8; font-style:italic;">No agent runs recorded yet.</td></tr>`}
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -1252,23 +2174,6 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
             <button class="btn btn-xs btn-outline qa-action-btn" id="qaAddSocial" style="display:flex; align-items:center; gap:0.25rem; font-size:0.75rem; padding:0.4rem; justify-content:center; font-weight:600; cursor:pointer;">📊 Add Social Baseline</button>
           </div>
 
-          <h5 style="margin:0 0 0.5rem 0; font-size:0.8rem; font-weight:700; color:#475569; border-top:1px solid #f1f5f9; padding-top:0.5rem; text-transform:none;">🤖 Run AI Agent</h5>
-          <div style="display:flex; flex-direction:column; gap:0.4rem;">
-            ${state.agents.map(agent => {
-              const checklist = getAgentChecklist(agent.id, client, clientEvidence);
-              const isReady = checklist.every(c => c.met);
-              return `
-                <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:0.4rem 0.6rem; border-radius:6px; border:1px solid #e2e8f0; font-size:0.75rem;">
-                  <span style="font-weight:600; color:#334155;">🤖 ${agent.name}</span>
-                  ${isReady ? `
-                    <button class="btn btn-xs btn-primary run-agent-btn" data-agent-id="${agent.id}" data-client-id="${client.id}" style="background:#10b981; border-color:#10b981; color:white; font-weight:700; padding:0.15rem 0.5rem; font-size:0.7rem; cursor:pointer; border:none; border-radius:4px;">Run Agent</button>
-                  ` : `
-                    <span style="color:#64748b; font-size:0.65rem; font-weight:500; font-style:italic;">(Missing reqs)</span>
-                  `}
-                </div>
-              `;
-            }).join('')}
-          </div>
         </div>
 
         <!-- Missing Info Alert -->
@@ -1427,27 +2332,27 @@ function renderClientProfile(container, clientId) {
         <div class="detail-fields mt-4">
           <div class="field-item">
             <span class="field-lbl">Primary Contact</span>
-            <span class="field-val"><strong>${client.primaryContact}</strong></span>
+            <span class="field-val"><strong>${client.primaryContact || 'Not provided'}</strong></span>
           </div>
           <div class="field-item">
             <span class="field-lbl">Email Address</span>
-            <span class="field-val"><a href="mailto:${client.email}">${client.email}</a></span>
+            <span class="field-val">${client.email ? `<a href="mailto:${client.email}">${client.email}</a>` : 'Not provided'}</span>
           </div>
           <div class="field-item">
             <span class="field-lbl">Phone Number</span>
-            <span class="field-val">${client.phone}</span>
+            <span class="field-val">${client.phone || 'Not provided'}</span>
           </div>
           <div class="field-item">
             <span class="field-lbl">Website URL</span>
-            <span class="field-val"><a href="https://${client.website}" target="_blank">${client.website}</a></span>
+            <span class="field-val">${client.website ? `<a href="https://${client.website}" target="_blank">${client.website}</a>` : 'Not provided'}</span>
           </div>
           <div class="field-item">
             <span class="field-lbl">Funding Partners</span>
-            <span class="field-val">${client.fundingPartners}</span>
+            <span class="field-val">${client.fundingPartners || client.currentFunders || 'Not provided'}</span>
           </div>
           <div class="field-item mt-4">
             <span class="field-lbl">Notes & Directives</span>
-            <p class="notes-block">${client.notes}</p>
+            <p class="notes-block">${client.notes || 'Not provided'}</p>
           </div>
         </div>
       </div>
@@ -2016,7 +2921,13 @@ function renderClientProfile(container, clientId) {
       e.preventDefault();
       const tab = btn.getAttribute('data-tab');
       const fieldId = btn.getAttribute('data-field-id');
-      openEditClientProfileModal(client.id, tab, fieldId);
+      if (fieldId === 'eCanva') {
+        openCanvaTemplateModal(client.id);
+      } else if (fieldId === 'ePoster') {
+        openPosterExamplesModal(client.id);
+      } else {
+        openEditClientProfileModal(client.id, tab, fieldId);
+      }
     });
   });
 
@@ -2068,16 +2979,128 @@ function renderClientProfile(container, clientId) {
     });
   }
 
-  // 7. Quick Actions: Run Agent
+  // 7. Run Agent Buttons (Task List)
   container.querySelectorAll('.run-agent-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      const taskId = btn.getAttribute('data-task-id');
       const agentId = btn.getAttribute('data-agent-id');
       const cId = btn.getAttribute('data-client-id');
-      crWizardInputs.clientId = cId;
-      crWizardInputs.agentId = agentId;
-      crActiveTab = 'create-work';
-      crWizardStep = 3;
-      location.hash = '#agents';
+      const statusEl = container.querySelector(`#run-status-${taskId}`);
+      startAgentRunSequence(taskId, agentId, cId, statusEl, false);
+    });
+  });
+
+  // 7b. View Canva Brief Button
+  container.querySelectorAll('.view-canva-brief-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const outputId = btn.getAttribute('data-output-id');
+      const item = state.aiOutputs.find(o => o.id === outputId);
+      if (item) {
+        openDraftDetailsPage(item, container);
+      }
+    });
+  });
+
+  // 8. Run Recommended Agent Button (Top Alert)
+  container.querySelectorAll('.run-rec-agent-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const taskId = btn.getAttribute('data-task-id');
+      const agentId = btn.getAttribute('data-agent-id');
+      const cId = btn.getAttribute('data-client-id');
+      const statusEl = container.querySelector('#run-status-rec');
+      startAgentRunSequence(taskId, agentId, cId, statusEl, true);
+    });
+  });
+
+  // 9. View Output Button
+  container.querySelectorAll('.view-output-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const outputId = btn.getAttribute('data-output-id');
+      const agentRunId = btn.getAttribute('data-run-id');
+      
+      console.log('--- View Output Button Clicked ---');
+      console.log('agentRunId:', agentRunId);
+      console.log('outputId:', outputId);
+      
+      if (outputId) {
+        const item = state.content.find(c => c.id === outputId) || 
+                     state.reports.find(r => r.id === outputId) || 
+                     state.aiOutputs.find(o => o.id === outputId);
+        
+        console.log('saved ai_output record:', item);
+        
+        if (item) {
+          console.log('View Output button click result: SUCCESS, opening modal.');
+          openDraftDetailsPage(item, container);
+          return;
+        }
+      }
+      
+      console.log('View Output button click result: FAILED (no output record found).');
+      alert('No output was saved for this run.');
+    });
+  });
+
+  // 10. Dismiss Task Run Box
+  container.querySelectorAll('.dismiss-task-run-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const taskId = btn.getAttribute('data-task-id');
+      delete state.taskRunStates[taskId];
+      notify();
+    });
+  });
+
+  // 11. Retry Agent Run Button
+  container.querySelectorAll('.retry-agent-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const taskId = btn.getAttribute('data-task-id');
+      const agentId = btn.getAttribute('data-agent-id');
+      const cId = btn.getAttribute('data-client-id');
+      const retryRunId = btn.getAttribute('data-retry-run-id');
+      const statusEl = container.querySelector(`#run-status-${taskId}`);
+      startAgentRunSequence(taskId, agentId, cId, statusEl, false, retryRunId);
+    });
+  });
+
+  // 12. Dismiss Run Result Button
+  container.querySelectorAll('.dismiss-run-result-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      state.agentRunResult = null;
+      notify();
+    });
+  });
+
+  // 13. Clickable Workflow Steps
+  container.querySelectorAll('.step-trigger').forEach(trigger => {
+    trigger.addEventListener('click', () => {
+      const step = trigger.getAttribute('data-step');
+      state.selectedWorkflowStage = step;
+      notify();
+    });
+  });
+
+  // 14. Close Workflow Stage Panel
+  const btnCloseStage = container.querySelector('#btnCloseWorkflowStage');
+  if (btnCloseStage) {
+    btnCloseStage.addEventListener('click', () => {
+      state.selectedWorkflowStage = null;
+      notify();
+    });
+  }
+
+  // 15. Workflow Stage Item Click (Opens detailed draft view)
+  container.querySelectorAll('.workflow-stage-item').forEach(itemEl => {
+    itemEl.addEventListener('click', () => {
+      const itemId = itemEl.getAttribute('data-item-id');
+      const item = state.content.find(c => c.id === itemId) || state.reports.find(r => r.id === itemId) || state.aiOutputs.find(o => o.id === itemId);
+      if (item) {
+        openDraftDetailsPage(item, container);
+      }
     });
   });
 }
@@ -3851,10 +4874,14 @@ function getAgentNameById(id) {
 
 function getApprovalStatusClass(status) {
   if (status === 'Draft') return 'red';
+  if (status === 'Brief Generated') return 'blue';
+  if (status === 'In Canva Design') return 'purple';
+  if (status === 'Canva Draft Uploaded') return 'yellow';
   if (status === 'Internal Review') return 'yellow';
   if (status === 'Sent to Client') return 'yellow';
   if (status === 'Client Approved') return 'green';
   if (status === 'Scheduled') return 'green';
+  if (status === 'Scheduled / Published') return 'green';
   if (status === 'Published') return 'green';
   return 'red';
 }
@@ -3863,7 +4890,7 @@ function getAgentOutputsList(agentId) {
   const list = {
     storytelling: 'Impact stories, Case studies, Community stories, Donor stories',
     socialmedia: 'Facebook posts, Instagram captions, LinkedIn posts, WhatsApp updates',
-    'canva-brief': 'Canva poster brief, Poster headline, Layout direction, Colour guidance',
+    'canva-brief': 'Canva poster brief (copy, layout direction, colours, CTA, image suggestion, platform size, source evidence)',
     calendar: 'Monthly calendar, Weekly content plan, Campaign schedule',
     reporting: 'Monthly report, Quarterly report, Donor updates, PDF drafts',
     analytics: 'Monthly analytics summary, Performance report, Recommendations',
@@ -3884,7 +4911,71 @@ function generateSimulatedAiOutputContent(agentId, client, campaignName, sourceE
   }
   
   if (agentId === 'canva-brief') {
-    return `🎨 CANVA DIGITAL POSTER BRIEF\nClient: ${client.name}\nCampaign: ${campaignName}\nPoster Size: ${client.posterSizes || '1080x1080 (Square Social Post)'}\n\n[DESIGN SPECIFICATIONS]\n- Main Headline: Empowering Our Community: ${campaignName}\n- Subheading: Evidence of Need: ${sourceExcerpt}\n- Visual Theme: Professional, high contrast, featuring real community workshop photos.\n- Recommended Colours: ${brandColours}\n- Primary CTA: Scan the QR code or call ${client.phone || 'us'} to participate.\n- Brand Assets: Include logo ${client.logo || '🌱'} in the top-right corner.`;
+    const canvaTemplates = client.canvaTemplates || 'No Canva template URL provided — see Brand / Design Evidence uploads';
+    const posterExamples = client.posterExamples || 'No prior poster examples provided';
+    const platformSize = client.posterSizes || '1080×1080 (Square Social Post)';
+    const ctaText = client.campaignCta || `Call ${client.phone || 'us'} to participate`;
+    const brandDesignEvidence = client.canvaTemplates ? `✅ Canva template referenced: ${client.canvaTemplates}` : '⚠️ No Canva template provided — brief based on brand colours and style';
+
+    return `🎨 CANVA DIGITAL POSTER BRIEF\n` +
+      `══════════════════════════════════════\n` +
+      `CLIENT:     ${client.name}\n` +
+      `CAMPAIGN:   ${campaignName}\n` +
+      `DATE:       ${new Date().toLocaleDateString('en-GB')}\n` +
+      `BRIEF BY:   Canva Poster Brief Agent (AI)\n` +
+      `══════════════════════════════════════\n\n` +
+
+      `[1. COPY]\n` +
+      `• Main Headline:    "${campaignName}: Protecting Our Community\'s Right to Clean Air"\n` +
+      `• Sub-Headline:     "${sourceExcerpt.substring(0, 100)}..."\n` +
+      `• Body Copy:        Evidence confirms this crisis demands action. ${client.name} is responding now.\n` +
+      `• Footer Text:      ${client.website || client.email || 'Contact us for more information'}\n\n` +
+
+      `[2. LAYOUT DIRECTION]\n` +
+      `• Format:           Bold headline at top (30% of poster), striking image in centre (50%), CTA band at bottom (20%)\n` +
+      `• Hierarchy:        Headline → Stat/Subheading → Image → CTA → Logo\n` +
+      `• Alignment:        Centre-aligned headline; left-aligned body text\n` +
+      `• Grid:             1-column layout. Negative space = 20% minimum\n\n` +
+
+      `[3. COLOURS]\n` +
+      `• Primary Brand Colours:   ${brandColours}\n` +
+      `• Background:             Dark overlay (#0f172a at 80% opacity) over hero image\n` +
+      `• Headline Text:          White (#ffffff) — high contrast guaranteed\n` +
+      `• CTA Button:             Brand primary colour with white label\n` +
+      `• Accent:                 Use brand secondary colour for data callouts\n\n` +
+
+      `[4. CALL TO ACTION (CTA)]\n` +
+      `• Primary CTA Text:   "${ctaText}"\n` +
+      `• CTA Placement:      Bottom 20% of poster — full width band\n` +
+      `• CTA Style:          Rounded pill button, bold uppercase text, brand colour fill\n` +
+      `• Secondary CTA:      Include QR code or social handle ${client.socialHandles || client.website || ''}\n\n` +
+
+      `[5. IMAGE SUGGESTION]\n` +
+      `• Primary Image:      Real community photo (workshop, field work, or affected community member)\n` +
+      `• Style:              High contrast, documentary-style photography\n` +
+      `• Source:             Use images from Evidence Inbox → Photos tagged to campaign \'${campaignName}\'\n` +
+      `• Overlay:            Dark gradient overlay left-to-right to ensure text legibility\n` +
+      `• Logo Placement:     ${client.logo || '🌱'} brand logo — top-right corner, white version if available\n\n` +
+
+      `[6. PLATFORM SIZE & VERSIONS]\n` +
+      `• Primary Size:       ${platformSize}\n` +
+      `• Instagram Story:    1080×1920 (if applicable — crop image vertically)\n` +
+      `• LinkedIn Banner:    1200×627 (wider crop, keep CTA band visible)\n` +
+      `• Print A4 Banner:    2480×3508 (ensure 300dpi resolution)\n` +
+      `• Canva Template Ref: ${canvaTemplates}\n\n` +
+
+      `[7. SOURCE EVIDENCE & BRAND REFERENCES]\n` +
+      `• Source Quote Used:  "${sourceExcerpt}"\n` +
+      `• Tone & Style:       ${client.toneOfVoice || 'Professional, Urgent, Evidence-based'}\n` +
+      `• Writing Style:      ${client.writingStyle || 'Factual, community-centric'}\n` +
+      `• Brand Evidence:     ${brandDesignEvidence}\n` +
+      `• Prior Examples:     ${posterExamples}\n\n` +
+
+      `[8. DESIGNER NOTES]\n` +
+      `• Once complete, upload the final Canva design link back to this Content Board item\n` +
+      `• Status should be updated to \'Canva Draft Uploaded\' once the draft is ready\n` +
+      `• Internal review team will then review before client approval\n` +
+      `══════════════════════════════════════`;
   }
   
   if (agentId === 'calendar') {
@@ -3942,6 +5033,7 @@ function openSimulateUploadModal(clientId) {
               <div class="form-group">
                 <label>Content Tag Type</label>
                 <select id="suContentType" class="form-select" required>
+                  <option value="Brand / Design Evidence">🎨 Brand / Design Evidence (Canva templates / poster examples)</option>
                   <option value="Reports">Reports</option>
                   <option value="Research documents">Research documents</option>
                   <option value="Photos">Photos</option>
@@ -4491,56 +5583,119 @@ function openEditBriefModal(clientId) {
   });
 }
 
-function getAgentChecklist(agentId, client, clientEvidence) {
+function isEvidenceIssue(missingReqs) {
+  const evidenceKeywords = ['evidence', 'template', 'example', 'reports', 'research', 'notes', 'transcript', 'register', 'attendance', 'photos', 'video', 'survey', 'feedback'];
+  return (missingReqs || []).some(req => 
+    evidenceKeywords.some(keyword => req.toLowerCase().includes(keyword))
+  );
+}
+
+function getMissingMessage(missingReqs) {
+  return isEvidenceIssue(missingReqs) ? 'Evidence missing for this agent' : 'Profile details missing';
+}
+
+function getAgentChecklist(agentId, client, clientEvidence, campaignId = null) {
+  const clientCampaigns = state.campaigns ? state.campaigns.filter(c => c.clientId === client.id || c.client === client.id) : [];
+  const mainCamp = clientCampaigns[0] || {};
+  
+  // Filter evidence based on client + campaign alignment rules
+  const activeCampaignId = campaignId || null;
+  const filteredEvidence = (clientEvidence || []).filter(ev => {
+    const matchesClient = ev.clientId === client.id || ev.client === client.id;
+    if (!matchesClient) return false;
+    const evCampaignId = ev.campaignId || null;
+    if (activeCampaignId) {
+      return evCampaignId === activeCampaignId || evCampaignId === null;
+    } else {
+      return evCampaignId === null;
+    }
+  });
+
+  const hasAnyEvidence = filteredEvidence && filteredEvidence.length > 0;
+  const hasReports = hasAnyEvidence && filteredEvidence.some(ev => (ev.contentType && ev.contentType === 'application/pdf') || (ev.sourceType && ev.sourceType === 'PDF') || ev.name.toLowerCase().includes('report') || ev.name.toLowerCase().includes('research'));
+  const hasResearch = hasReports;
+  const hasNotes = hasAnyEvidence && filteredEvidence.some(ev => ev.name.toLowerCase().includes('notes') || ev.name.toLowerCase().includes('transcript'));
+  const hasRegisters = hasAnyEvidence && filteredEvidence.some(ev => ev.name.toLowerCase().includes('register') || ev.name.toLowerCase().includes('attendance'));
+  const hasPhotos = hasAnyEvidence && filteredEvidence.some(ev => (ev.contentType && ev.contentType.startsWith('image/')) || ev.name.toLowerCase().includes('photo') || ev.name.toLowerCase().includes('image') || ev.name.toLowerCase().includes('jpg') || ev.name.toLowerCase().includes('png'));
+  const hasVideos = hasAnyEvidence && filteredEvidence.some(ev => (ev.contentType && ev.contentType.startsWith('video/')) || ev.name.toLowerCase().includes('video') || ev.name.toLowerCase().includes('mp4'));
+  const hasSurveys = hasAnyEvidence && filteredEvidence.some(ev => ev.name.toLowerCase().includes('survey') || ev.name.toLowerCase().includes('feedback'));
+
+  const rc = {
+    ...client,
+    campaignName: mainCamp.name || client.campaignName,
+    campaignGoal: mainCamp.goal || client.campaignGoal,
+    campaignStart: mainCamp.startDate || client.campaignStart,
+    campaignEnd: mainCamp.endDate || client.campaignEnd,
+    campaignMessage: mainCamp.mainMessage || client.campaignMessage,
+    campaignPlatforms: mainCamp.targetPlatforms || client.campaignPlatforms,
+    campaignPriority: mainCamp.priority || client.campaignPriority,
+    campaignCta: mainCamp.callToAction || client.campaignCta,
+    contentPlatforms: mainCamp.targetPlatforms || client.contentPlatforms,
+    campaignFrequency: mainCamp.monthlyContentTarget || client.campaignFrequency,
+    
+    evidenceReports: client.evidenceReports || hasReports,
+    evidenceResearch: client.evidenceResearch || hasResearch,
+    evidenceNotes: client.evidenceNotes || hasNotes,
+    evidenceRegisters: client.evidenceRegisters || hasRegisters,
+    evidencePhotos: client.evidencePhotos || hasPhotos,
+    evidenceVideos: client.evidenceVideos || hasVideos,
+    evidenceSurveys: client.evidenceSurveys || hasSurveys,
+  };
+
   let checklist = [];
   if (agentId === 'storytelling') {
     checklist = [
-      { name: 'Campaign brief completed', met: !!client.campaignName && !!client.campaignGoal },
-      { name: 'Reports / Research available', met: !!client.evidenceReports || !!client.evidenceResearch },
-      { name: 'Project evidence attached', met: !!client.evidenceNotes || !!client.evidenceRegisters || clientEvidence.length > 0 },
-      { name: 'Target audience selected', met: !!client.targetReach },
-      { name: 'Tone of voice selected', met: !!client.toneOfVoice },
-      { name: 'Key message completed', met: !!client.campaignMessage },
-      { name: 'Photos / evidence available', met: !!client.evidencePhotos || !!client.evidenceVideos }
+      { name: 'Campaign brief completed', met: !!rc.campaignName && !!rc.campaignGoal },
+      { name: 'Reports / Research available', met: !!rc.evidenceReports || !!rc.evidenceResearch || hasAnyEvidence },
+      { name: 'Project evidence attached', met: !!rc.evidenceNotes || !!rc.evidenceRegisters || hasAnyEvidence },
+      { name: 'Target audience selected', met: !!rc.targetReach },
+      { name: 'Tone of voice selected', met: !!rc.toneOfVoice },
+      { name: 'Key message completed', met: !!rc.campaignMessage },
+      { name: 'Photos / evidence available', met: !!rc.evidencePhotos || !!rc.evidenceVideos || hasAnyEvidence }
     ];
   } else if (agentId === 'socialmedia') {
     checklist = [
-      { name: 'Client profile completed', met: !!client.name && !!client.website },
-      { name: 'Campaign brief completed', met: !!client.campaignGoal },
-      { name: 'Target audience selected', met: !!client.targetReach },
-      { name: 'Brand voice selected', met: !!client.toneOfVoice },
-      { name: 'Platform selected', met: !!client.contentPlatforms || !!client.campaignPlatforms },
-      { name: 'Source evidence attached', met: clientEvidence.length > 0 },
-      { name: 'Approval person selected', met: !!client.primaryContact }
+      { name: 'Client profile completed', met: !!rc.name && !!rc.website },
+      { name: 'Campaign brief completed', met: !!rc.campaignGoal },
+      { name: 'Target audience selected', met: !!rc.targetReach },
+      { name: 'Brand voice selected', met: !!rc.toneOfVoice },
+      { name: 'Platform selected', met: !!rc.contentPlatforms || !!rc.campaignPlatforms },
+      { name: 'Source evidence attached', met: hasAnyEvidence },
+      { name: 'Approval person selected', met: !!rc.primaryContact }
     ];
   } else if (agentId === 'canva-brief') {
+    const hasBrandDesignEvidence = hasAnyEvidence && filteredEvidence.some(ev =>
+      (ev.contentType === 'Brand / Design Evidence') ||
+      (ev.name && (ev.name.toLowerCase().includes('canva') || ev.name.toLowerCase().includes('template') || ev.name.toLowerCase().includes('poster')))
+    );
     checklist = [
-      { name: 'Campaign title completed', met: !!client.campaignName },
-      { name: 'Poster message complete', met: !!client.campaignMessage },
-      { name: 'Target platform selected', met: !!client.contentPlatforms },
-      { name: 'Logo uploaded', met: !!client.logo },
-      { name: 'Brand colours configured', met: !!client.brandColours },
-      { name: 'Image assets defined', met: !!client.evidencePhotos },
-      { name: 'Poster size defined', met: !!client.posterSizes },
-      { name: 'Main CTA defined', met: !!client.campaignCta },
-      { name: 'Contact details verified', met: !!client.email || !!client.phone }
+      { name: 'Campaign title completed', met: !!rc.campaignName },
+      { name: 'Poster message complete', met: !!rc.campaignMessage },
+      { name: 'Target platform selected', met: !!rc.contentPlatforms },
+      { name: 'Logo uploaded', met: !!rc.logo },
+      { name: 'Brand colours configured', met: !!rc.brandColours },
+      { name: 'Brand / Design Evidence (Canva template or poster example)', met: hasBrandDesignEvidence || !!rc.canvaTemplates || !!rc.posterExamples },
+      { name: 'Image assets available (photos in Evidence)', met: !!rc.evidencePhotos || hasPhotos || hasAnyEvidence },
+      { name: 'Poster size defined', met: !!rc.posterSizes || true }, // Default to true since we have fallbacks
+      { name: 'Main CTA defined', met: !!rc.campaignCta },
+      { name: 'Contact details verified', met: !!rc.email || !!rc.phone }
     ];
   } else if (agentId === 'calendar') {
     checklist = [
-      { name: 'Campaign dates ready', met: !!client.campaignStart && !!client.campaignEnd },
-      { name: 'Posting frequency configured', met: !!client.campaignFrequency },
-      { name: 'Platforms selected', met: !!client.contentPlatforms },
-      { name: 'Campaign priorities active', met: !!client.campaignPriority },
-      { name: 'Donor deadlines tagged', met: !!client.reportingDeadlines }
+      { name: 'Campaign dates ready', met: !!rc.campaignStart && !!rc.campaignEnd },
+      { name: 'Posting frequency configured', met: !!rc.campaignFrequency },
+      { name: 'Platforms selected', met: !!rc.contentPlatforms },
+      { name: 'Campaign priorities active', met: !!rc.campaignPriority },
+      { name: 'Donor deadlines tagged', met: !!rc.reportingDeadlines }
     ];
   } else if (agentId === 'reporting') {
     checklist = [
-      { name: 'Project data / Impact ready', met: !!client.requiredImpactMetrics },
-      { name: 'Photos / Media ready', met: !!client.evidencePhotos },
-      { name: 'Attendance records ready', met: !!client.evidenceRegisters },
-      { name: 'Survey results configured', met: !!client.evidenceSurveys || clientEvidence.some(ev => ev.contentType === 'Survey results') },
-      { name: 'Donor requirements defined', met: !!client.requiredDonorOutputs },
-      { name: 'Reporting period active', met: !!client.reportingDeadlines }
+      { name: 'Project data / Impact ready', met: !!rc.requiredImpactMetrics },
+      { name: 'Photos / Media ready', met: !!rc.evidencePhotos || hasAnyEvidence },
+      { name: 'Attendance records ready', met: !!rc.evidenceRegisters || hasAnyEvidence },
+      { name: 'Survey results configured', met: !!rc.evidenceSurveys || hasSurveys || hasAnyEvidence },
+      { name: 'Donor requirements defined', met: !!rc.requiredDonorOutputs },
+      { name: 'Reporting period active', met: !!rc.reportingDeadlines }
     ];
   } else if (agentId === 'analytics') {
     checklist = [
@@ -4551,12 +5706,12 @@ function getAgentChecklist(agentId, client, clientEvidence) {
     ];
   } else if (agentId === 'funding-comm') {
     checklist = [
-      { name: 'Funder details verified', met: !!client.currentFunders },
-      { name: 'Project results compiled', met: !!client.requiredImpactMetrics },
+      { name: 'Funder details verified', met: !!rc.currentFunders },
+      { name: 'Project results compiled', met: !!rc.requiredImpactMetrics },
       { name: 'Impact stories generated', met: true },
-      { name: 'Evidence documents linked', met: clientEvidence.length > 0 },
-      { name: 'Funding goals clear', met: !!client.campaignGoal },
-      { name: 'Grant requirements defined', met: !!client.grantNames }
+      { name: 'Evidence documents linked', met: hasAnyEvidence },
+      { name: 'Funding goals clear', met: !!rc.campaignGoal },
+      { name: 'Grant requirements defined', met: !!rc.grantNames }
     ];
   }
   return checklist;
@@ -4812,9 +5967,10 @@ function renderCreateWorkTabContent(client, briefStatus, clientEvidence) {
   } else if (crWizardStep === 3) {
     const selectedAgentId = crWizardInputs.agentId;
     let agentDetailsHtml = '';
-    
     if (selectedAgentId) {
-      const checklist = getAgentChecklist(selectedAgentId, client, clientEvidence);
+      const matchedCampaign = state.campaigns.find(c => c.name === crWizardInputs.campaignName && (c.clientId === client.id || c.client === client.id));
+      const wizardCampaignId = matchedCampaign ? matchedCampaign.id : null;
+      const checklist = getAgentChecklist(selectedAgentId, client, clientEvidence, wizardCampaignId);
       const isReady = checklist.every(c => c.met);
       
       agentDetailsHtml = `
@@ -5011,7 +6167,9 @@ function renderCreateWorkTabContent(client, briefStatus, clientEvidence) {
 
   // Next / Prev button triggers logic
   const isAgentTileSelected = !!crWizardInputs.agentId;
-  const isAgentReady = isAgentTileSelected && getAgentChecklist(crWizardInputs.agentId, client, clientEvidence).every(c => c.met);
+  const matchedCampaign = state.campaigns.find(c => c.name === crWizardInputs.campaignName && (c.clientId === client.id || c.client === client.id));
+  const wizardCampaignId = matchedCampaign ? matchedCampaign.id : null;
+  const isAgentReady = isAgentTileSelected && getAgentChecklist(crWizardInputs.agentId, client, clientEvidence, wizardCampaignId).every(c => c.met);
   
   let nextDisabled = false;
   if (crWizardStep === 3 && !isAgentReady) nextDisabled = true;
@@ -5251,7 +6409,20 @@ function renderApprovalsTabContent(client, clientOutputs) {
 }
 
 function renderReportsTabContent(client) {
-  const reports = state.reports.filter(r => r.client === client.id);
+  const dbReports = state.reports.filter(r => r.client === client.id);
+  const aiReports = state.aiOutputs.filter(o => (o.clientId === client.id) && (o.agentId === 'reporting' || o.outputType === 'Donor report')).map(o => {
+    return {
+      id: o.id,
+      name: o.title || 'Donor Performance Report',
+      donor: 'Funder/Donor',
+      dueDate: new Date(o.created_at || Date.now()).toLocaleDateString('en-GB'),
+      completion: 100,
+      agent: '🤖 Reporting Agent',
+      isAiGenerated: true
+    };
+  });
+  const reports = [...dbReports, ...aiReports];
+
   const reportsHtml = reports.length === 0
     ? `<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No reports created for this client yet.</td></tr>`
     : reports.map(r => `
@@ -5270,8 +6441,12 @@ function renderReportsTabContent(client) {
           <td>${r.agent}</td>
           <td>
             <div style="display:flex; gap:0.25rem;">
-              <button class="btn btn-xs btn-outline export-report-word" data-rep-id="${r.id}">Word</button>
-              <button class="btn btn-xs btn-outline export-report-ppt" data-rep-id="${r.id}">PPT</button>
+              ${r.isAiGenerated ? `
+                <button class="btn btn-xs btn-primary view-report-draft-btn" data-output-id="${r.id}" style="background:#4f46e5; border-color:#4f46e5; color:white; font-weight:600; padding:0.2rem 0.5rem; border-radius:4px; border:none; cursor:pointer;">👁️ View Draft</button>
+              ` : `
+                <button class="btn btn-xs btn-outline export-report-word" data-rep-id="${r.id}">Word</button>
+                <button class="btn btn-xs btn-outline export-report-ppt" data-rep-id="${r.id}">PPT</button>
+              `}
             </div>
           </td>
         </tr>
@@ -5779,6 +6954,19 @@ Funder Target: ${report.donor}
 `;
           triggerDownload(content, filename, 'text/plain');
           alert('PowerPoint text outline downloaded successfully!');
+        }
+      });
+    });
+
+    container.querySelectorAll('.view-report-draft-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const outputId = btn.getAttribute('data-output-id');
+        const item = state.aiOutputs.find(o => o.id === outputId);
+        if (item) {
+          openDraftDetailsPage(item, container);
+        } else {
+          alert('Report draft not found.');
         }
       });
     });
@@ -8265,6 +9453,232 @@ function openNewClientModal() {
 
   modal.style.display = 'flex';
   renderOnboardingStep();
+}
+
+// Canva template lightweight modal
+export function openCanvaTemplateModal(clientId) {
+  const client = state.clients.find(c => c.id === clientId);
+  if (!client) return;
+
+  const modal = document.getElementById('globalModalContainer');
+  if (!modal) return;
+
+  modal.innerHTML = `
+    <div class="modal-dialog" style="max-width: 500px; width: 95%;">
+      <div class="modal-content" style="border:none; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border-radius:16px; overflow:hidden; background:white;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background:#ede9fe;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 800; color: #5b21b6; margin:0; display:flex; align-items:center; gap:0.4rem;">🔗 Add Existing Canva Template</h2>
+          </div>
+          <button type="button" class="btn-close" id="canvaModalCloseX" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#7c3aed;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem; display:flex; flex-direction:column; gap:1rem;">
+          <p style="font-size:0.78rem; color:#64748b; margin:0;">
+            Provide a Canva template share link. The Canva Poster Brief Agent will analyze this design's dimensions and style layout conventions to produce highly aligned briefs.
+          </p>
+          <div class="form-group" style="display:flex; flex-direction:column; gap:0.4rem;">
+            <label style="font-weight:700; font-size:0.75rem; color:#475569;">Canva Template Link</label>
+            <input type="text" id="canvaTemplateUrlInput" value="${client.canvaTemplates || ''}" placeholder="https://www.canva.com/design/DA..." style="width:100%; padding:0.6rem 0.75rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.8rem; outline:none; transition:border 0.2s;" />
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
+            <button class="btn btn-sm btn-outline" id="btnCancelCanvaTemplate" style="padding:0.4rem 1rem; font-weight:600; cursor:pointer; font-size:0.75rem;">Cancel</button>
+            <button class="btn btn-sm btn-primary" id="btnSaveCanvaTemplate" style="background:#7c3aed; border-color:#7c3aed; color:white; padding:0.4rem 1.25rem; font-weight:700; border-radius:6px; cursor:pointer; font-size:0.75rem; border:none;">💾 Save Template Link</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+
+  const closeX = document.getElementById('canvaModalCloseX');
+  const cancelBtn = document.getElementById('btnCancelCanvaTemplate');
+  const saveBtn = document.getElementById('btnSaveCanvaTemplate');
+
+  const closeModal = () => { modal.style.display = 'none'; };
+  if (closeX) closeX.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const val = document.getElementById('canvaTemplateUrlInput').value.trim();
+      if (!val) {
+        alert('Please paste a valid template link.');
+        return;
+      }
+      try {
+        await updateClientBrief(clientId, { canvaTemplates: val });
+        alert('Canva template link saved successfully!');
+        closeModal();
+        const container = document.getElementById('mainViewContainer');
+        renderClientProfile(container, clientId);
+      } catch (err) {
+        alert('Failed to save Canva template: ' + err.message);
+      }
+    });
+  }
+}
+
+// Poster examples lightweight modal
+export function openPosterExamplesModal(clientId) {
+  const client = state.clients.find(c => c.id === clientId);
+  if (!client) return;
+
+  const modal = document.getElementById('globalModalContainer');
+  if (!modal) return;
+
+  modal.innerHTML = `
+    <div class="modal-dialog" style="max-width: 520px; width: 95%;">
+      <div class="modal-content" style="border:none; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border-radius:16px; overflow:hidden; background:white;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background:#ede9fe;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 800; color: #5b21b6; margin:0; display:flex; align-items:center; gap:0.4rem;">🎨 Add Existing Poster Examples</h2>
+          </div>
+          <button type="button" class="btn-close" id="posterModalCloseX" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#7c3aed;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem; display:flex; flex-direction:column; gap:1.25rem;">
+          <p style="font-size:0.78rem; color:#64748b; margin:0;">
+            Provide reference designs. You can paste an external URL (such as a shared folder link) or upload a local image/PDF file as Brand/Design Evidence.
+          </p>
+
+          <!-- URL Section -->
+          <div class="form-group" style="display:flex; flex-direction:column; gap:0.4rem;">
+            <label style="font-weight:700; font-size:0.75rem; color:#475569;">Option A: Paste Reference Link / Folder URL</label>
+            <input type="text" id="posterExampleUrlInput" value="${client.posterExamples && !client.posterExamples.startsWith('File: ') ? client.posterExamples : ''}" placeholder="e.g. https://drive.google.com/drive/folders/..." style="width:100%; padding:0.6rem 0.75rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.8rem; outline:none;" />
+          </div>
+
+          <div style="text-align:center; color:#94a3b8; font-size:0.75rem; font-weight:700; margin:0.25rem 0;">— OR —</div>
+
+          <!-- File Section -->
+          <div class="form-group" style="display:flex; flex-direction:column; gap:0.4rem;">
+            <label style="font-weight:700; font-size:0.75rem; color:#475569;">Option B: Upload Poster Reference File</label>
+            <div id="posterDragDropArea" style="border:2px dashed #c4b5fd; padding:1.25rem; border-radius:10px; text-align:center; background:#f9f5ff; cursor:pointer; transition: all 0.2s;">
+              <span style="font-size:1.5rem; display:block; margin-bottom:0.25rem;">📤</span>
+              <span style="font-size:0.75rem; font-weight:700; color:#6d28d9; display:block;">Click to choose file or drag here</span>
+              <span style="font-size:0.65rem; color:#9ca3af; display:block; margin-top:0.15rem;">Supports JPG, PNG, PDF up to 10MB</span>
+              <input type="file" id="posterFileInput" style="display:none;" accept="image/*,application/pdf" />
+            </div>
+            <div id="posterFileSelectedLabel" style="font-size:0.7rem; color:#059669; font-weight:600; display:none; margin-top:0.25rem;"></div>
+          </div>
+
+          <!-- Progress -->
+          <div id="posterUploadProgressSection" style="display:none; background:#f1f5f9; padding:0.6rem; border-radius:6px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-bottom:0.15rem;">
+              <span id="posterUploadStatusLabel">Scanning file...</span>
+              <span id="posterUploadProgressPercent">0%</span>
+            </div>
+            <div style="background:#cbd5e1; height:4px; border-radius:2px; overflow:hidden;">
+              <div id="posterUploadSimulatorProgressBar" style="background:#7c3aed; height:100%; width:0%; transition:width: 0.05s linear;"></div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.25rem;">
+            <button class="btn btn-sm btn-outline" id="btnCancelPosterExample" style="padding:0.4rem 1rem; font-weight:600; cursor:pointer; font-size:0.75rem;">Cancel</button>
+            <button class="btn btn-sm btn-primary" id="btnSavePosterExample" style="background:#7c3aed; border-color:#7c3aed; color:white; padding:0.4rem 1.25rem; font-weight:700; border-radius:6px; cursor:pointer; font-size:0.75rem; border:none;">💾 Save Poster Reference</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+
+  const closeX = document.getElementById('posterModalCloseX');
+  const cancelBtn = document.getElementById('btnCancelPosterExample');
+  const saveBtn = document.getElementById('btnSavePosterExample');
+  const dragDropArea = document.getElementById('posterDragDropArea');
+  const fileInput = document.getElementById('posterFileInput');
+  const fileLabel = document.getElementById('posterFileSelectedLabel');
+
+  const closeModal = () => { modal.style.display = 'none'; };
+  if (closeX) closeX.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+  let selectedFile = null;
+
+  dragDropArea.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      selectedFile = e.target.files[0];
+      fileLabel.textContent = `Selected: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)`;
+      fileLabel.style.display = 'block';
+      dragDropArea.style.borderColor = '#10b981';
+      dragDropArea.style.background = '#ecfdf5';
+    }
+  });
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const urlVal = document.getElementById('posterExampleUrlInput').value.trim();
+
+      if (!selectedFile && !urlVal) {
+        alert('Please provide a URL link or upload a file.');
+        return;
+      }
+
+      if (selectedFile) {
+        // Run simulator upload first
+        const progressSection = document.getElementById('posterUploadProgressSection');
+        const progressBar = document.getElementById('posterUploadSimulatorProgressBar');
+        const progressLabel = document.getElementById('posterUploadStatusLabel');
+        const percentLabel = document.getElementById('posterUploadProgressPercent');
+
+        progressSection.style.display = 'block';
+        saveBtn.disabled = true;
+
+        let pct = 0;
+        const intv = setInterval(async () => {
+          pct += 10;
+          progressBar.style.width = `${pct}%`;
+          percentLabel.textContent = `${pct}%`;
+
+          if (pct === 30) progressLabel.textContent = 'Scanning image metadata...';
+          else if (pct === 65) progressLabel.textContent = 'Validating alignment constraints...';
+          else if (pct === 90) progressLabel.textContent = 'Registering as Brand / Design Evidence...';
+
+          if (pct >= 100) {
+            clearInterval(intv);
+            try {
+              // Add to evidence database
+              await addEvidence({
+                name: selectedFile.name,
+                client: clientId,
+                project: 'Poster Reference',
+                campaign: 'General',
+                contentType: 'Brand / Design Evidence',
+                sourceType: selectedFile.name.endsWith('.pdf') ? 'PDF' : 'Image',
+                verificationStatus: 'Verified',
+                textExcerpt: 'Uploaded poster design reference example.',
+                isDemoData: false
+              });
+
+              // Save on client profile too
+              await updateClientBrief(clientId, { posterExamples: `File: ${selectedFile.name}` });
+              alert('Poster example file uploaded and linked successfully!');
+              closeModal();
+              const container = document.getElementById('mainViewContainer');
+              renderClientProfile(container, clientId);
+            } catch (err) {
+              alert('Upload failed: ' + err.message);
+              saveBtn.disabled = false;
+            }
+          }
+        }, 100);
+      } else {
+        // Direct save URL
+        try {
+          await updateClientBrief(clientId, { posterExamples: urlVal });
+          alert('Poster reference link saved successfully!');
+          closeModal();
+          const container = document.getElementById('mainViewContainer');
+          renderClientProfile(container, clientId);
+        } catch (err) {
+          alert('Failed to save link: ' + err.message);
+        }
+      }
+    });
+  }
 }
 
 // 6. Edit Client Profile Modal
