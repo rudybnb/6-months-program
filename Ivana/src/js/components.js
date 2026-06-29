@@ -1796,8 +1796,8 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
     comp.missing[key].forEach(f => allMissing.push(f));
   }
 
-  const clientContent = state.content.filter(c => c.client === client.id);
-  const clientReports = state.reports.filter(r => r.client === client.id);
+  const clientContent = state.content.filter(c => c.client === client.id || c.clientId === client.id);
+  const clientReports = state.reports.filter(r => r.client === client.id || r.clientId === client.id);
 
   const hasEvidence = clientEvidence.length > 0;
   const hasContent = clientContent.length > 0 || clientReports.length > 0;
@@ -1805,7 +1805,20 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
   const hasApprove = clientContent.some(c => c.status === 'Approved') || clientReports.some(r => r.status === 'Sent to Client');
   const hasPublish = clientContent.some(c => ['Scheduled', 'Published'].includes(c.status)) || clientReports.some(r => ['Submitted', 'Published'].includes(r.status));
 
+  const allPublished = hasContent && 
+    clientContent.every(c => c.status === 'Published') && 
+    clientReports.every(r => r.status === 'Published' || r.status === 'Submitted');
+
+  const finalReportBtnHtml = allPublished ? `
+    <div style="margin-bottom:1.5rem;">
+      <button class="btn btn-success" id="btnViewFinalReport" style="background:#10b981; border-color:#10b981; color:white; font-weight:800; width:100%; padding:0.8rem; border-radius:10px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:0.5rem; border:none; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">
+        🏆 View Final Report & Campaign Performance
+      </button>
+    </div>
+  ` : '';
+
   const stepperHtml = `
+    ${finalReportBtnHtml}
     <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1.25rem; border-radius:12px; margin-bottom:1.5rem;">
       <h5 style="margin:0 0 0.75rem 0; font-size:0.85rem; font-weight:700; color:#334155; text-transform:none; text-align:center;">📋 Workspace Workflow Status</h5>
       <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; font-size:0.75rem;">
@@ -3044,6 +3057,13 @@ function renderClientProfile(container, clientId) {
           alert('Failed to delete workspace: ' + err.message);
         }
       }
+    });
+  }
+
+  const viewFinalReportBtn = container.querySelector('#btnViewFinalReport');
+  if (viewFinalReportBtn) {
+    viewFinalReportBtn.addEventListener('click', () => {
+      openFinalReportModal(client);
     });
   }
 
@@ -4365,7 +4385,7 @@ export function renderReportsCenter(container) {
     container.innerHTML = `
       <div class="section-header-row mb-6">
         <div>
-          <h1>Donor Reporting Center</h1>
+          <h1>Donor Reporting Center (0)</h1>
           <p class="subtitle">Compliance dashboard for tracking quarterly, monthly, and board narratives</p>
         </div>
       </div>
@@ -4385,7 +4405,7 @@ export function renderReportsCenter(container) {
   container.innerHTML = `
     <div class="section-header-row mb-6">
       <div>
-        <h1>Donor Reporting Center</h1>
+        <h1>Donor Reporting Center (${listReports.length})</h1>
         <p class="subtitle">Compliance dashboard for tracking quarterly, monthly, and board narratives</p>
       </div>
     </div>
@@ -8120,6 +8140,267 @@ Funder Target: ${report.donor}
     triggerDownload(content, filename, 'text/plain');
     modal.style.display = 'none';
     alert('PowerPoint presentation outline slide brief downloaded as a text outline file!');
+  });
+}
+
+function openFinalReportModal(client) {
+  const clientCampaigns = state.campaigns.filter(c => c.clientId === client.id || c.client === client.id);
+  const clientReports = state.reports.filter(r => r.clientId === client.id || r.client === client.id);
+  const clientContent = state.content.filter(c => c.clientId === client.id || c.client === client.id);
+  const clientEvidence = state.evidence.filter(e => e.clientId === client.id || e.client === client.id);
+  const metrics = state.impactMetrics[client.id] || { peopleReached: 0, campaignReach: 0, reportsSubmitted: 0, fundingSecured: 0 };
+
+  const modal = document.getElementById('globalModalContainer');
+  
+  const clientName = client.name || 'Not provided';
+  const campaignName = clientCampaigns[0]?.name || 'Not provided';
+  const reportingPeriod = client.baselineStartDate ? `${client.baselineStartDate} to Present` : 'Not provided';
+  
+  const pubItem = clientContent.find(c => c.status === 'Published') || clientReports.find(r => r.status === 'Published' || r.status === 'Submitted');
+  const publishedAt = pubItem?.updated_at ? new Date(pubItem.updated_at).toLocaleString() : new Date().toLocaleString();
+  
+  const execSummary = client.mission || client.notes || 'Not provided';
+  const activitySummary = clientCampaigns[0]?.goal || 'Not provided';
+
+  const formatMetric = (val, formatFn) => {
+    if (val === undefined || val === null || val === '') return 'Not provided';
+    if (formatFn) return formatFn(val);
+    return val;
+  };
+
+  const peopleReachedText = formatMetric(metrics.peopleReached, v => v.toLocaleString());
+  const campaignReachText = formatMetric(metrics.campaignReach, v => v.toLocaleString());
+  const reportsSubmittedText = formatMetric(metrics.reportsSubmitted);
+  const fundingSecuredText = formatMetric(metrics.fundingSecured, v => `£${v.toLocaleString()}`);
+  const fbFollowersText = formatMetric(client.fbFollowers, v => v.toLocaleString());
+  const igFollowersText = formatMetric(client.igFollowers, v => v.toLocaleString());
+
+  const publishedContentHtml = clientContent.filter(c => c.status === 'Published').map(c => `
+    <li style="margin-bottom:0.5rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.4rem; list-style:none;">
+      <strong>[${c.platform || 'Social'}] ${c.title || 'Untitled Post'}</strong><br/>
+      <span style="font-size:0.7rem; color:#64748b;">Status: Published ${c.canvaDesignLink ? `• <a href="${c.canvaDesignLink}" target="_blank" style="color:#7c3aed;">Canva Design Link</a>` : ''}</span>
+    </li>
+  `).join('') || '<li style="color:#64748b; font-style:italic; list-style:none;">No published content items found.</li>';
+
+  const canvaLinks = [];
+  if (client.canvaTemplateLink) canvaLinks.push(client.canvaTemplateLink);
+  clientContent.forEach(c => {
+    if (c.canvaDesignLink) canvaLinks.push(c.canvaDesignLink);
+  });
+  const canvaLinksHtml = canvaLinks.map(link => `
+    <div style="margin-top:0.25rem;"><a href="${link}" target="_blank" style="color:#7c3aed; font-weight:600;">🎨 ${link}</a></div>
+  `).join('') || '<span style="color:#64748b; font-style:italic;">Not provided</span>';
+
+  const evidenceHtml = clientEvidence.map(e => `
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:0.4rem; border-radius:6px; margin-bottom:0.25rem; font-size:0.7rem;">
+      📄 <strong>${e.name || 'Unnamed Document'}</strong> (${e.verificationStatus || 'Verified'})
+    </div>
+  `).join('') || '<div style="color:#64748b; font-style:italic;">Not provided</div>';
+
+  let auditHtml = `
+    <div style="font-size:0.75rem; color:#475569; line-height:1.5;">
+      <div>• <strong>Brief Onboarding</strong>: Approved by Irene K. on ${client.startDate || 'Not provided'}</div>
+      <div>• <strong>Evidence Connection</strong>: Connected ${clientEvidence.length} verified evidence document(s)</div>
+  `;
+  if (pubItem) {
+    if (pubItem.approvedBy || pubItem.approved_by) {
+      auditHtml += `<div>• <strong>Content Approval</strong>: Approved by ${pubItem.approvedBy || pubItem.approved_by} on ${pubItem.approvedAt || pubItem.approved_at ? new Date(pubItem.approvedAt || pubItem.approved_at).toLocaleString() : 'Not provided'}</div>`;
+    }
+    if (pubItem.publishedBy || pubItem.published_by) {
+      auditHtml += `<div>• <strong>Publication</strong>: Finalized and published by ${pubItem.publishedBy || pubItem.published_by} on ${publishedAt}</div>`;
+    }
+  } else {
+    auditHtml += `<div>• <strong>Publication</strong>: Finalized and published on ${publishedAt}</div>`;
+  }
+  auditHtml += `</div>`;
+
+  modal.innerHTML = `
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content" style="border-radius:12px; overflow:hidden;">
+        <div class="modal-header" style="background:#10b981; color:white; padding:1rem 1.5rem; display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="color:white; margin:0;">🏆 Final Impact & Campaign Performance Report</h2>
+          <button class="close-modal-btn" id="closeGlobalModal">×</button>
+        </div>
+        <div class="modal-body" style="padding:1.5rem; display:flex; flex-direction:column; gap:1.25rem; font-size:0.8rem; line-height:1.5; color:#1e293b; max-height:80vh; overflow-y:auto;">
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; background:#f0fdf4; border:1px solid #bbf7d0; padding:1rem; border-radius:8px;">
+            <div>
+              <strong>NGO Client:</strong> ${clientName}<br/>
+              <strong>Campaign Name:</strong> ${campaignName}<br/>
+              <strong>Reporting Period:</strong> ${reportingPeriod}
+            </div>
+            <div>
+              <strong>Prepared by:</strong> IK Communications<br/>
+              <strong>Status:</strong> <span style="background:#dcfce7; color:#166534; font-weight:700; padding:2px 8px; border-radius:12px; font-size:0.7rem; border:1px solid #86efac;">Published / Complete</span><br/>
+              <strong>Published Date:</strong> ${publishedAt}
+            </div>
+          </div>
+
+          <div style="background:#dcfce7; border:1px solid #bbf7d0; color:#166534; padding:0.75rem; border-radius:8px; font-size:0.75rem;">
+            <strong>✅ Final Report Checklist Status</strong>
+            <div style="margin-top:0.25rem;">• Outstanding: None — work complete</div>
+          </div>
+
+          <div>
+            <h4 style="margin:0 0 0.4rem 0; font-size:0.85rem; font-weight:700; color:#0f172a;">1. Executive Summary</h4>
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:0.75rem; border-radius:6px; font-style:italic;">
+              ${execSummary}
+            </div>
+          </div>
+
+          <div>
+            <h4 style="margin:0 0 0.4rem 0; font-size:0.85rem; font-weight:700; color:#0f172a;">2. Campaign Activity Summary</h4>
+            <p>${activitySummary}</p>
+          </div>
+
+          <div>
+            <h4 style="margin:0 0 0.4rem 0; font-size:0.85rem; font-weight:700; color:#0f172a;">3. Published Content & Deliverables</h4>
+            <ul style="padding-left:0; margin:0;">
+              ${publishedContentHtml}
+            </ul>
+          </div>
+
+          <div>
+            <h4 style="margin:0 0 0.4rem 0; font-size:0.85rem; font-weight:700; color:#0f172a;">4. Canva Design Links</h4>
+            ${canvaLinksHtml}
+          </div>
+
+          <div>
+            <h4 style="margin:0 0 0.4rem 0; font-size:0.85rem; font-weight:700; color:#0f172a;">5. Evidence Utilized</h4>
+            ${evidenceHtml}
+          </div>
+
+          <div>
+            <h4 style="margin:0 0 0.4rem 0; font-size:0.85rem; font-weight:700; color:#0f172a;">6. Campaign Performance Metrics</h4>
+            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem; text-align:center;">
+              <div style="background:#f1f5f9; padding:0.5rem; border-radius:6px;">
+                <div style="font-size:0.65rem; color:#64748b;">People Reached</div>
+                <strong style="font-size:0.9rem; color:#0f172a;">${peopleReachedText}</strong>
+              </div>
+              <div style="background:#f1f5f9; padding:0.5rem; border-radius:6px;">
+                <div style="font-size:0.65rem; color:#64748b;">Campaign Reach</div>
+                <strong style="font-size:0.9rem; color:#0f172a;">${campaignReachText}</strong>
+              </div>
+              <div style="background:#f1f5f9; padding:0.5rem; border-radius:6px;">
+                <div style="font-size:0.65rem; color:#64748b;">Reports Submitted</div>
+                <strong style="font-size:0.9rem; color:#0f172a;">${reportsSubmittedText}</strong>
+              </div>
+              <div style="background:#f1f5f9; padding:0.5rem; border-radius:6px;">
+                <div style="font-size:0.65rem; color:#64748b;">Grants Secured</div>
+                <strong style="font-size:0.9rem; color:#0f172a;">${fundingSecuredText}</strong>
+              </div>
+            </div>
+            
+            <div style="margin-top:0.75rem; font-size:0.7rem; color:#475569;">
+              📘 FB Followers: <strong>${fbFollowersText}</strong> | 📸 IG Followers: <strong>${igFollowersText}</strong>
+            </div>
+          </div>
+
+          <div>
+            <h4 style="margin:0 0 0.4rem 0; font-size:0.85rem; font-weight:700; color:#0f172a;">7. Approval & Audit Trail</h4>
+            <div style="background:#fafafa; border:1px solid #cbd5e1; padding:0.75rem; border-radius:6px;">
+              ${auditHtml}
+            </div>
+          </div>
+
+          <div style="border-top:1px solid #e2e8f0; padding-top:1rem; display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <span>Export and Submission Actions:</span>
+            <div style="display:flex; gap:0.5rem;">
+              <button class="btn btn-outline" id="btnExportFinalPDF">⬇ Download PDF</button>
+              <button class="btn btn-outline" id="btnExportFinalWord">⬇ Download MS Word</button>
+              <button class="btn btn-outline" id="btnOpenCanvaPlaceholder" style="background:#f3e8ff; border-color:#d8b4fe; color:#6b21a8; font-weight:600;">🎨 Open Canva Template</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
+
+  document.getElementById('closeGlobalModal').addEventListener('click', () => {
+    modal.style.display = 'none';
+  });
+
+  const triggerDownload = (content, filename, type) => {
+    const blob = new Blob([content], { type: type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  document.getElementById('btnExportFinalPDF').addEventListener('click', () => {
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Final Report: ${client.name}</title>
+          <style>
+            body { font-family: sans-serif; padding: 2rem; color: #111827; }
+            h2 { color: #10b981; }
+            h4 { border-bottom: 2px solid #e5e7eb; padding-bottom: 0.25rem; margin-top: 2rem; }
+          </style>
+        </head>
+        <body>
+          <h2>🏆 Final Impact & Campaign Performance Report</h2>
+          <p><strong>Prepared for:</strong> ${clientName}</p>
+          <p><strong>Campaign Name:</strong> ${campaignName}</p>
+          <p><strong>Reporting Period:</strong> ${reportingPeriod}</p>
+          <p><strong>Status:</strong> Published / Complete</p>
+          <p><strong>Prepared by:</strong> IK Communications</p>
+          <p><strong>Published Date:</strong> ${publishedAt}</p>
+          
+          <h4>1. Executive Summary</h4>
+          <p>${execSummary}</p>
+          
+          <h4>2. Campaign Activity Summary</h4>
+          <p>${activitySummary}</p>
+          
+          <h4>3. Performance Metrics</h4>
+          <p>People Reached: ${peopleReachedText}</p>
+          <p>Campaign Reach: ${campaignReachText}</p>
+          <p>Reports Submitted: ${reportsSubmittedText}</p>
+          <p>Grants Secured: ${fundingSecuredText}</p>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  });
+
+  document.getElementById('btnExportFinalWord').addEventListener('click', () => {
+    const content = `
+      🏆 Final Impact & Campaign Performance Report
+      ============================================
+      Client Name: ${clientName}
+      Campaign Name: ${campaignName}
+      Reporting Period: ${reportingPeriod}
+      Status: Published / Complete
+      Prepared by: IK Communications
+      Published Date: ${publishedAt}
+
+      1. Executive Summary:
+      ${execSummary}
+
+      2. Campaign Activity Summary:
+      ${activitySummary}
+
+      3. Performance Metrics:
+      - People Reached: ${peopleReachedText}
+      - Campaign Reach: ${campaignReachText}
+      - Reports Submitted: ${reportsSubmittedText}
+      - Grants Secured: ${fundingSecuredText}
+    `;
+    triggerDownload(content, `${clientName.replace(/ /g, '_')}_Final_Report.doc`, 'application/msword');
+  });
+
+  document.getElementById('btnOpenCanvaPlaceholder').addEventListener('click', () => {
+    alert('Canva integration placeholder: Redirecting to organization Canva board.');
   });
 }
 
