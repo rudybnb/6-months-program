@@ -1726,9 +1726,9 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
 
   const hasEvidence = clientEvidence.length > 0;
   const hasContent = clientContent.length > 0 || clientReports.length > 0;
-  const hasReview = clientContent.some(c => ['Internal Review', 'Canva Draft Uploaded', 'In Canva Design'].includes(c.approvalStatus)) || clientReports.some(r => r.status === 'Pending Review');
-  const hasApprove = clientContent.some(c => ['Client Approved', 'Sent to Client'].includes(c.approvalStatus)) || clientReports.some(r => r.status === 'Sent to Client');
-  const hasPublish = clientContent.some(c => ['Published', 'Scheduled / Published'].includes(c.status || c.approvalStatus)) || clientReports.some(r => r.status === 'Submitted');
+  const hasReview = clientContent.some(c => c.status === 'Review') || clientReports.some(r => r.status === 'Pending Review');
+  const hasApprove = clientContent.some(c => c.status === 'Approved') || clientReports.some(r => r.status === 'Sent to Client');
+  const hasPublish = clientContent.some(c => ['Scheduled', 'Published'].includes(c.status)) || clientReports.some(r => r.status === 'Submitted');
 
   const stepperHtml = `
     <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1.25rem; border-radius:12px; margin-bottom:1.5rem;">
@@ -1779,11 +1779,11 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
     const stage = state.selectedWorkflowStage;
     let filteredItems = [];
     if (stage === 'Review') {
-      filteredItems = state.content.filter(c => c.client === client.id && ['Review', 'Draft', 'Brief Generated', 'In Canva Design', 'Canva Draft Uploaded', 'Internal Review'].includes(c.approvalStatus || c.status));
+      filteredItems = state.content.filter(c => c.client === client.id && c.status === 'Review');
     } else if (stage === 'Approve') {
-      filteredItems = state.content.filter(c => c.client === client.id && ['Approval', 'Client Approved', 'Approved'].includes(c.approvalStatus || c.status));
+      filteredItems = state.content.filter(c => c.client === client.id && c.status === 'Approved');
     } else if (stage === 'Publish/Report') {
-      filteredItems = state.content.filter(c => c.client === client.id && ['Scheduled', 'Published', 'Scheduled / Published'].includes(c.approvalStatus || c.status));
+      filteredItems = state.content.filter(c => c.client === client.id && ['Scheduled', 'Published'].includes(c.status));
     }
 
     stageItemsHtml = `
@@ -1944,7 +1944,7 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
                       <span class="badge-status ${isReady ? 'green' : 'red'}" style="font-size:0.65rem; padding:0.1rem 0.35rem; font-weight:700;">
                         ${isReady ? 'Ready to run' : 'Not Ready'}
                       </span>
-                      ${!isReady ? `<br/><span style="color:#b91c1c; font-size:0.65rem; font-weight:500;">${getMissingMessage(missingReqs)}</span>` : ''}
+                      ${!isReady ? `<br/><span class="missing-requirement-alert" style="color:#b91c1c; font-size:0.65rem; font-weight:700; background:#fef2f2; padding:2px 6px; border-radius:4px; border:1px solid #fee2e2; display:inline-block; margin-top:0.25rem;">⚠️ Missing: ${getMissingMessage(missingReqs)}</span>` : ''}
                     </div>
                   </div>
 
@@ -1975,16 +1975,28 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
                         let tab = 'basic';
                         let fieldId = 'eName';
                         if (unmet) {
-                          if (unmet.name.includes('Tone') || unmet.name.includes('Brand voice') || unmet.name.includes('voice')) { tab = 'brand'; fieldId = 'eTone'; }
-                          else if (unmet.name.includes('Campaign') || unmet.name.includes('Poster message') || unmet.name.includes('CTA')) { tab = 'campaigns'; fieldId = 'ecGoal'; }
-                          else if (unmet.name.includes('colours')) { tab = 'brand'; fieldId = 'eColours'; }
-                          else if (unmet.name.includes('Logo')) { tab = 'brand'; fieldId = 'eLogo'; }
-                          else if (unmet.name.includes('audience')) { tab = 'audience'; fieldId = 'eAudienceMain'; }
-                          else if (unmet.name.includes('Brand / Design Evidence') || unmet.name.includes('Canva template') || unmet.name.includes('poster example')) { tab = 'brand'; fieldId = 'eCanva'; }
-                          else if (unmet.name.includes('Funder') || unmet.name.includes('Grant') || unmet.name.includes('deadlines') || unmet.name.includes('Donor')) { tab = 'funders'; fieldId = 'eFunders'; }
+                          const name = unmet.name.toLowerCase();
+                          if (name.includes('evidence') || name.includes('report') || name.includes('research') || name.includes('photo') || name.includes('media') || name.includes('attendance') || name.includes('register') || name.includes('transcript') || name.includes('survey')) {
+                            tab = 'evidence';
+                            fieldId = 'upload';
+                          }
+                          else if (name.includes('tone') || name.includes('brand voice') || name.includes('voice')) { tab = 'brand'; fieldId = 'eTone'; }
+                          else if (name.includes('campaign') || name.includes('poster message') || name.includes('cta')) { tab = 'campaigns'; fieldId = 'ecGoal'; }
+                          else if (name.includes('colours')) { tab = 'brand'; fieldId = 'eColours'; }
+                          else if (name.includes('logo')) { tab = 'brand'; fieldId = 'eLogo'; }
+                          else if (name.includes('audience')) { tab = 'audience'; fieldId = 'eAudienceMain'; }
+                          else if (name.includes('brand / design evidence') || name.includes('canva template') || name.includes('poster example')) { tab = 'brand'; fieldId = 'eCanva'; }
+                          else if (name.includes('funder') || name.includes('grant') || name.includes('deadlines') || name.includes('donor')) { tab = 'funders'; fieldId = 'eFunders'; }
                         }
                         return `
-                          <button class="btn btn-xs btn-outline complete-field-now-btn" data-client-id="${client.id}" data-tab="${tab}" data-field-id="${fieldId}" style="font-weight:700; padding:0.25rem 0.75rem; border-radius:6px; font-size:0.7rem; border:1px solid #cbd5e1; background:white; color:#475569; cursor:pointer;">✏️ Complete Now</button>
+                          <button class="btn btn-xs btn-outline complete-field-now-btn" 
+                            data-client-id="${client.id}" 
+                            data-tab="${tab}" 
+                            data-field-id="${fieldId}" 
+                            data-task-id="${t.id}"
+                            data-campaign-id="${t.campaignId || ''}"
+                            data-unmet="${unmet ? unmet.name : ''}"
+                            style="font-weight:700; padding:0.25rem 0.75rem; border-radius:6px; font-size:0.7rem; border:1px solid #cbd5e1; background:white; color:#475569; cursor:pointer;">✏️ Complete Now</button>
                         `;
                       })()}
                     </div>
@@ -3001,7 +3013,11 @@ function renderClientProfile(container, clientId) {
       e.preventDefault();
       const tab = btn.getAttribute('data-tab');
       const fieldId = btn.getAttribute('data-field-id');
-      if (fieldId === 'eCanva') {
+      const unmet = btn.getAttribute('data-unmet') || '';
+      const campaignId = btn.getAttribute('data-campaign-id') || null;
+      if (tab === 'evidence') {
+        openSimulateUploadModal(client.id, unmet, campaignId);
+      } else if (fieldId === 'eCanva') {
         openCanvaTemplateModal(client.id);
       } else if (fieldId === 'ePoster') {
         openPosterExamplesModal(client.id);
@@ -3326,7 +3342,7 @@ let activePlatformFilter = 'All';
 
 export function renderContentModule(container) {
   const activeContentSubTab = localStorage.getItem('activeContentSubTab') || 'Board';
-  const columns = ['Ideas', 'Drafting', 'Review', 'Approval', 'Scheduled', 'Published'];
+  const columns = ['Draft', 'Review', 'Approved', 'Scheduled', 'Published'];
   const clientsFilter = state.currentUserRole === 'admin' ? state.clients : state.clients.filter(c => c.id === state.selectedClientId);
   const platforms = ['All', 'LinkedIn', 'Facebook', 'Instagram', 'WhatsApp', 'Email Newsletter', 'Website'];
 
@@ -3447,7 +3463,7 @@ export function renderContentModule(container) {
                           <span class="approval-tag ${appStatusClass}">${c.approvalStatus}</span>
                           
                           <div class="card-actions">
-                            ${col === 'Approval' ? `
+                            ${col === 'Review' ? `
                               <button class="btn btn-xs btn-primary kanban-approve-btn" data-card-id="${c.id}">Approve</button>
                             ` : ''}
                             
@@ -3806,9 +3822,25 @@ function openBufferComposerModal(item, container) {
                   <textarea id="composerClientNotes" rows="2" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit; font-size: 0.8rem;" placeholder="Client feedback notes...">${item.clientNotes || ''}</textarea>
                 </div>
 
-                <div class="composer-meta-details" style="font-size: 0.78rem; background: #f8fafc; padding: 0.50rem; border-radius: 6px;">
-                  <div class="detail-row"><span>NGO Client:</span> <strong>${ngo.name}</strong></div>
-                  <div class="detail-row"><span>Campaign Scope:</span> <strong>${item.campaign || 'General'}</strong></div>
+                <div class="form-group">
+                  <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Campaign Scope</label>
+                  <select id="composerCampaign" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" required>
+                    ${(state.campaigns || []).filter(c => c.clientId === item.client || c.client === item.client).map(c => `
+                      <option value="${c.id}" ${item.campaignId === c.id ? 'selected' : ''}>${c.name}</option>
+                    `).join('') || '<option value="">(No campaign found)</option>'}
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Source Evidence</label>
+                  <select id="composerSourceEvidence" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" required>
+                    ${(state.evidence || []).filter(e => e.clientId === item.client || e.client === item.client).map(e => `
+                      <option value="evidence:${e.id}" ${item.sourceEvidenceId === e.id ? 'selected' : ''}>📄 ${e.originalName || e.name}</option>
+                    `).join('')}
+                    ${(state.meetings || []).filter(m => m.clientId === item.client || m.client_id === item.client).map(m => `
+                      <option value="meeting:${m.id}" ${item.sourceMeetingId === m.id ? 'selected' : ''}>📅 Meeting: ${m.title}</option>
+                    `).join('')}
+                  </select>
                 </div>
               </div>
               
@@ -3830,7 +3862,17 @@ function openBufferComposerModal(item, container) {
             <div class="modal-footer mt-6" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
               <button class="btn btn-outline" id="copyComposerTextBtn">Copy Text</button>
               <button class="btn btn-outline" id="saveComposerBtn">Save Changes</button>
-              <button class="btn btn-primary" id="approveComposerScheduleBtn">Approve & Queue Post</button>
+              ${(() => {
+                if (item.status === 'Draft' || item.status === 'Review') {
+                  return `<button class="btn btn-primary" id="composerApproveBtn">Approve Post</button>`;
+                } else if (item.status === 'Approved') {
+                  return `<button class="btn btn-primary" id="composerScheduleBtn">Schedule Post</button>`;
+                } else if (item.status === 'Scheduled') {
+                  return `<button class="btn btn-primary" id="composerPublishBtn">Publish Now</button>`;
+                } else {
+                  return '';
+                }
+              })()}
             </div>
           </div>
         </div>
@@ -3951,38 +3993,31 @@ function openBufferComposerModal(item, container) {
       alert('Post draft copy copied to clipboard!');
     });
 
-    document.getElementById('saveComposerBtn').addEventListener('click', async () => {
+    const saveChangesHelper = async (nextStatus = null) => {
       const title = document.getElementById('composerTitle').value;
       const platform = document.getElementById('composerPlatform').value;
       const contentPillar = document.getElementById('composerPillar').value;
       const content = document.getElementById('composerTextarea').value;
       const clientNotes = document.getElementById('composerClientNotes').value;
+      const campaignId = document.getElementById('composerCampaign').value;
+      const sourceVal = document.getElementById('composerSourceEvidence').value;
 
-      const updates = {
-        title,
-        platform,
-        contentPillar,
-        content,
-        clientNotes
-      };
-
-      const internalNotesEl = document.getElementById('composerInternalNotes');
-      if (internalNotesEl) {
-        updates.internalNotes = internalNotesEl.value;
+      if (!campaignId) {
+        alert('Please select or create a Campaign first.');
+        return false;
+      }
+      if (!sourceVal) {
+        alert('Please select or upload Source Evidence first.');
+        return false;
       }
 
-      await updateContentDetails(item.id, updates);
-      alert('Changes saved successfully!');
-      modal.style.display = 'none';
-      renderContentModule(container);
-    });
-
-    document.getElementById('approveComposerScheduleBtn').addEventListener('click', async () => {
-      const title = document.getElementById('composerTitle').value;
-      const platform = document.getElementById('composerPlatform').value;
-      const contentPillar = document.getElementById('composerPillar').value;
-      const content = document.getElementById('composerTextarea').value;
-      const clientNotes = document.getElementById('composerClientNotes').value;
+      let sourceEvidenceId = null;
+      let sourceMeetingId = null;
+      if (sourceVal.startsWith('evidence:')) {
+        sourceEvidenceId = sourceVal.substring(9);
+      } else if (sourceVal.startsWith('meeting:')) {
+        sourceMeetingId = sourceVal.substring(8);
+      }
 
       const updates = {
         title,
@@ -3990,8 +4025,15 @@ function openBufferComposerModal(item, container) {
         contentPillar,
         content,
         clientNotes,
-        approvalStatus: 'Scheduled'
+        campaignId,
+        sourceEvidenceId,
+        sourceMeetingId,
+        sourceManualEntryId: null
       };
+
+      if (nextStatus) {
+        updates.approvalStatus = nextStatus;
+      }
 
       const internalNotesEl = document.getElementById('composerInternalNotes');
       if (internalNotesEl) {
@@ -3999,12 +4041,53 @@ function openBufferComposerModal(item, container) {
       }
 
       await updateContentDetails(item.id, updates);
-      await updateContentStatus(item.id, 'Scheduled');
-      
-      alert('Draft approved! Saved and moved to Buffer Queue schedule.');
-      modal.style.display = 'none';
-      renderContentModule(container);
+      return true;
+    };
+
+    document.getElementById('saveComposerBtn').addEventListener('click', async () => {
+      const ok = await saveChangesHelper();
+      if (ok) {
+        alert('Changes saved successfully!');
+        modal.style.display = 'none';
+        renderContentModule(container);
+      }
     });
+
+    if (document.getElementById('composerApproveBtn')) {
+      document.getElementById('composerApproveBtn').addEventListener('click', async () => {
+        const ok = await saveChangesHelper('Client Approved');
+        if (ok) {
+          await updateContentStatus(item.id, 'Approved');
+          alert('Post approved successfully!');
+          modal.style.display = 'none';
+          renderContentModule(container);
+        }
+      });
+    }
+
+    if (document.getElementById('composerScheduleBtn')) {
+      document.getElementById('composerScheduleBtn').addEventListener('click', async () => {
+        const ok = await saveChangesHelper('Scheduled');
+        if (ok) {
+          await updateContentStatus(item.id, 'Scheduled');
+          alert('Post scheduled successfully!');
+          modal.style.display = 'none';
+          renderContentModule(container);
+        }
+      });
+    }
+
+    if (document.getElementById('composerPublishBtn')) {
+      document.getElementById('composerPublishBtn').addEventListener('click', async () => {
+        const ok = await saveChangesHelper('Published');
+        if (ok) {
+          await updateContentStatus(item.id, 'Published');
+          alert('Post published successfully!');
+          modal.style.display = 'none';
+          renderContentModule(container);
+        }
+      });
+    }
   };
 
   renderModalContent();
@@ -5066,7 +5149,7 @@ function generateSimulatedAiOutputContent(agentId, client, campaignName, sourceE
   }
   
   if (agentId === 'reporting') {
-    return `📋 FORMAL DONOR PERFORMANCE DRAFT\nReporting Period: Q2 2026\nFunder Target: ${client.currentFunders || 'Donor Partners'}\nCampaign: ${campaignName}\n\n[EXECUTIVE SUMMARY]\nThis performance report is compiled for the board and funding stakeholders. Over the last quarter, we tracked and addressed core needs.\n\n[KEY EVIDENCE FOUNDATION]\nAccording to verified findings: "${sourceExcerpt}". These results confirm that our active interventions are vital.\n\n[IMPACT DATA SUMMARY]\n- Deployed actions completed: High compliance\n- Community engagement feedback: Highly positive\n- Date generated: ${new Date().toISOString().split('T')[0]}`;
+    return `📋 FORMAL DONOR PERFORMANCE DRAFT\nReporting Period: Q2 2026\nFunder Target: ${client.currentFunders || 'Donor Partners'}\nCampaign: ${campaignName}\n\n[EXECUTIVE SUMMARY]\nThis performance report is compiled for the board and funding stakeholders. Over the last quarter, we tracked and addressed core needs.\n\n[KEY EVIDENCE FOUNDATION]\nAccording to verified findings: "${sourceExcerpt}". These results confirm that our active interventions are vital.\n\n[IMPACT DATA SUMMARY]\n- Deployed actions completed: High compliance\n- Community engagement feedback: Highly positive\n- Date generated: ${new Date().toISOString().split('T')[0]}\n\n[DETAILED FINDINGS]\nmonitored variables show high compliance. Reports and research sources are validated.`;
   }
   
   if (agentId === 'analytics') {
@@ -5080,10 +5163,38 @@ function generateSimulatedAiOutputContent(agentId, client, campaignName, sourceE
   return `Generated draft for ${outputType} using verified source.`;
 }
 
-function openSimulateUploadModal(clientId) {
+function openSimulateUploadModal(clientId, requiredTypeLabel = '', preselectCampaignId = null) {
   const modal = document.getElementById('globalModalContainer');
   const client = state.clients.find(c => c.id === clientId);
   if (!client) return;
+
+  const reqLower = requiredTypeLabel.toLowerCase();
+  const preselectFormat = (type) => {
+    if (reqLower.includes('photo') || reqLower.includes('image')) return type === 'Image' ? 'selected' : '';
+    if (reqLower.includes('report') || reqLower.includes('research')) return type === 'PDF' ? 'selected' : '';
+    if (reqLower.includes('survey')) return type === 'CSV' ? 'selected' : '';
+    if (reqLower.includes('attendance') || reqLower.includes('register')) return type === 'Excel' ? 'selected' : '';
+    if (reqLower.includes('notes') || reqLower.includes('transcript')) return type === 'Word' ? 'selected' : '';
+    return '';
+  };
+
+  const preselectContentType = (type) => {
+    if (reqLower.includes('photo') || reqLower.includes('image')) return type === 'Photos' ? 'selected' : '';
+    if (reqLower.includes('report')) return type === 'Reports' ? 'selected' : '';
+    if (reqLower.includes('research')) return type === 'Research documents' ? 'selected' : '';
+    if (reqLower.includes('survey')) return type === 'Survey results' ? 'selected' : '';
+    if (reqLower.includes('attendance') || reqLower.includes('register')) return type === 'Attendance registers' ? 'selected' : '';
+    if (reqLower.includes('notes') || reqLower.includes('transcript')) return type === 'Workshop notes' ? 'selected' : '';
+    if (reqLower.includes('canva') || reqLower.includes('brand')) return type === 'Brand / Design Evidence' ? 'selected' : '';
+    return '';
+  };
+
+  const typeHeaderHtml = requiredTypeLabel ? `
+    <div style="background:#fff3cd; border:1px solid #ffeeba; color:#856404; padding:0.75rem; border-radius:8px; margin-bottom:1rem; font-size:0.75rem; line-height:1.4;">
+      <strong>⚠️ Missing Agent Requirement:</strong> "${requiredTypeLabel}" <br/>
+      Please upload a valid evidence file (e.g. <strong>Reports/Research</strong>, <strong>Project Evidence</strong>, <strong>Photos</strong>, <strong>Survey</strong>, or <strong>Transcript</strong>) to satisfy this requirement.
+    </div>
+  ` : '';
 
   modal.innerHTML = `
     <div class="modal-dialog" style="max-width: 500px;">
@@ -5093,21 +5204,27 @@ function openSimulateUploadModal(clientId) {
           <button class="close-modal-btn" id="closeGlobalModal">×</button>
         </div>
         <div class="modal-body">
+          ${typeHeaderHtml}
           <form id="simUploadForm" style="display:flex; flex-direction:column; gap:0.75rem;">
             <div class="form-group">
+              <label>Select Real File (Optional)</label>
+              <input type="file" id="suFile" class="form-control" style="font-size:0.75rem; width:100%; border:1px solid var(--border-color); border-radius:6px; padding:0.25rem 0.5rem;" />
+            </div>
+
+            <div class="form-group">
               <label>File Name / Resource Title</label>
-              <input type="text" id="suName" placeholder="e.g. Durban School Sensor Training Register.pdf" required class="form-control" />
+              <input type="text" id="suName" placeholder="e.g. Durban School Sensor Training Register.pdf" required class="form-control" style="width:100%; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem;" />
             </div>
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
               <div class="form-group">
                 <label>Resource Format</label>
-                <select id="suSourceType" class="form-select" required>
-                  <option value="PDF">PDF Report</option>
-                  <option value="Excel">Excel Spreadsheet</option>
-                  <option value="CSV">CSV Data</option>
-                  <option value="Word">Word Document</option>
-                  <option value="Image">Image / Photo</option>
+                <select id="suSourceType" class="form-select" required style="width:100%; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem;">
+                  <option value="PDF" ${preselectFormat('PDF')}>PDF Report</option>
+                  <option value="Excel" ${preselectFormat('Excel')}>Excel Spreadsheet</option>
+                  <option value="CSV" ${preselectFormat('CSV')}>CSV Data</option>
+                  <option value="Word" ${preselectFormat('Word')}>Word Document</option>
+                  <option value="Image" ${preselectFormat('Image')}>Image / Photo</option>
                   <option value="Video">Video Clip</option>
                   <option value="Link">External Website Link</option>
                   <option value="Email">Email Communication</option>
@@ -5115,15 +5232,15 @@ function openSimulateUploadModal(clientId) {
               </div>
               <div class="form-group">
                 <label>Content Tag Type</label>
-                <select id="suContentType" class="form-select" required>
-                  <option value="Brand / Design Evidence">🎨 Brand / Design Evidence (Canva templates / poster examples)</option>
-                  <option value="Reports">Reports</option>
-                  <option value="Research documents">Research documents</option>
-                  <option value="Photos">Photos</option>
+                <select id="suContentType" class="form-select" required style="width:100%; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem;">
+                  <option value="Brand / Design Evidence" ${preselectContentType('Brand / Design Evidence')}>🎨 Brand / Design Evidence (Canva templates / poster examples)</option>
+                  <option value="Reports" ${preselectContentType('Reports')}>Reports</option>
+                  <option value="Research documents" ${preselectContentType('Research documents')}>Research documents</option>
+                  <option value="Photos" ${preselectContentType('Photos')}>Photos</option>
                   <option value="Videos">Videos</option>
-                  <option value="Workshop notes">Workshop notes</option>
-                  <option value="Attendance registers">Attendance registers</option>
-                  <option value="Survey results">Survey results</option>
+                  <option value="Workshop notes" ${preselectContentType('Workshop notes')}>Workshop notes</option>
+                  <option value="Attendance registers" ${preselectContentType('Attendance registers')}>Attendance registers</option>
+                  <option value="Survey results" ${preselectContentType('Survey results')}>Survey results</option>
                   <option value="Community feedback">Community feedback</option>
                   <option value="Case studies">Case studies</option>
                   <option value="Testimonials">Testimonials</option>
@@ -5136,27 +5253,26 @@ function openSimulateUploadModal(clientId) {
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
               <div class="form-group">
                 <label>Project Name</label>
-                <input type="text" id="suProject" placeholder="e.g. School Sensor Deployment" required class="form-control" />
+                <input type="text" id="suProject" placeholder="e.g. School Sensor Deployment" required class="form-control" style="width:100%; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem;" value="General Campaign Work" />
               </div>
               <div class="form-group">
                 <label>Campaign Tag</label>
-                <select id="suCampaign" class="form-select" required>
-                  ${state.campaigns.filter(c => c.client === clientId).map(c => `
-                    <option value="${c.name}">${c.name}</option>
-                  `).join('') || `<option value="${client.campaignName || 'General'}">${client.campaignName || 'General'}</option>`}
+                <select id="suCampaign" class="form-select" required style="width:100%; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem;">
+                  ${state.campaigns.filter(c => c.client === clientId || c.clientId === clientId).map(c => `
+                    <option value="${c.id}" ${c.id === preselectCampaignId ? 'selected' : ''}>${c.name}</option>
+                  `).join('') || `<option value="General">General</option>`}
                 </select>
               </div>
             </div>
 
             <div class="form-group">
               <label>Verbatim Excerpt / Factual Statement</label>
-              <textarea id="suExcerpt" placeholder="Enter key facts, numbers, dates or figures from the file (e.g. 15 air monitors deployed in Southern Durban schools on June 18th)" required class="form-control" style="height:80px;"></textarea>
-              <span style="font-size:0.65rem; color:var(--text-muted);">This text will be mapped directly into AI Agent memory blocks.</span>
+              <textarea id="suExcerpt" placeholder="Enter key facts, numbers, dates or figures from the file" required class="form-control" style="width:100%; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem; height:60px; font-family:inherit;"></textarea>
             </div>
 
             <div class="form-group">
               <label>Initial Verification Audit Status</label>
-              <select id="suStatus" class="form-select" required>
+              <select id="suStatus" class="form-select" required style="width:100%; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem;">
                 <option value="Verified">Verified (Confirmed Source)</option>
                 <option value="Needs Review">Needs Review (Awaiting check)</option>
                 <option value="Unverified">Unverified (Unconfirmed entry)</option>
@@ -5182,6 +5298,13 @@ function openSimulateUploadModal(clientId) {
   
   modal.style.display = 'flex';
 
+  document.getElementById('suFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      document.getElementById('suName').value = file.name;
+    }
+  });
+
   document.getElementById('closeGlobalModal').addEventListener('click', () => {
     modal.style.display = 'none';
   });
@@ -5194,9 +5317,12 @@ function openSimulateUploadModal(clientId) {
     const sourceType = document.getElementById('suSourceType').value;
     const contentType = document.getElementById('suContentType').value;
     const project = document.getElementById('suProject').value;
-    const campaign = document.getElementById('suCampaign').value;
+    const campaignVal = document.getElementById('suCampaign').value;
     const excerpt = document.getElementById('suExcerpt').value;
     const status = document.getElementById('suStatus').value;
+
+    const fileInput = document.getElementById('suFile');
+    const file = fileInput ? fileInput.files[0] : null;
 
     const progressSection = document.getElementById('uploadProgressSection');
     const progressBar = document.getElementById('uploadSimulatorProgressBar');
@@ -5206,7 +5332,7 @@ function openSimulateUploadModal(clientId) {
     progressSection.style.display = 'block';
     
     let pct = 0;
-    const intv = setInterval(() => {
+    const intv = setInterval(async () => {
       pct += 10;
       progressBar.style.width = `${pct}%`;
       percentLabel.textContent = `${pct}%`;
@@ -5217,34 +5343,53 @@ function openSimulateUploadModal(clientId) {
 
       if (pct >= 100) {
         clearInterval(intv);
-        addEvidence({
-          name: name,
-          client: clientId,
-          project: project,
-          campaign: campaign,
-          contentType: contentType,
-          sourceType: sourceType,
-          verificationStatus: status,
-          textExcerpt: excerpt,
-          isDemoData: false
-        });
 
-        // Log in console
-        state.agentActivityLogs.unshift({
-          timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-          agent: 'System Ingest',
-          client: client.name,
-          message: `Evidence file "${name}" ingested and marked as ${status}.`,
-          status: 'success'
-        });
+        try {
+          if (file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('campaignId', campaignVal);
+            formData.append('sourceType', sourceType);
+            formData.append('verificationStatus', status);
+            formData.append('textExcerpt', excerpt);
+            formData.append('onboardingStep', 'General Evidence');
+            
+            await addEvidence(formData);
+          } else {
+            const selectedCampObj = state.campaigns.find(c => c.id === campaignVal || c.name === campaignVal);
+            await addEvidence({
+              name: name,
+              client: clientId,
+              project: project,
+              campaignId: selectedCampObj ? selectedCampObj.id : null,
+              campaign: selectedCampObj ? selectedCampObj.name : campaignVal,
+              contentType: contentType,
+              sourceType: sourceType,
+              verificationStatus: status,
+              textExcerpt: excerpt,
+              isDemoData: false
+            });
+          }
 
-        alert(`Success! "${name}" has been connected to the Evidence Inbox.`);
-        modal.style.display = 'none';
-        notify();
+          state.agentActivityLogs.unshift({
+            timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+            agent: 'System Ingest',
+            client: client.name,
+            message: `Evidence file "${name}" ingested and marked as ${status}.`,
+            status: 'success'
+          });
+
+          alert(`Success! "${name}" has been connected to the Evidence Inbox.`);
+          modal.style.display = 'none';
+          notify();
+        } catch (uploadErr) {
+          alert('Upload failed: ' + uploadErr.message);
+        }
       }
-    }, 120);
+    }, 100);
   });
 }
+
 
 function openEditBriefModal(clientId) {
   const modal = document.getElementById('globalModalContainer');
@@ -7678,12 +7823,9 @@ Funder Target: ${report.donor}
   });
 }
 
-// 4. Create Content Idea Modal
 function openNewIdeaModal(clientsList, prefill = null) {
   const modal = document.getElementById('globalModalContainer');
-  const campaignsList = state.campaigns || [];
   
-  // Calculate prefilled values if any
   const prefillTitle = prefill ? (prefill.title || '') : '';
   const prefillClient = prefill ? (prefill.client || state.selectedClientId || '') : (state.selectedClientId || '');
   const prefillCampaignId = prefill ? (prefill.campaignId || '') : '';
@@ -7698,27 +7840,30 @@ function openNewIdeaModal(clientsList, prefill = null) {
           <button class="close-modal-btn" id="closeGlobalModal">×</button>
         </div>
         <div class="modal-body">
-          <form id="newIdeaForm" class="modal-form-fields">
+          <form id="newIdeaForm" class="modal-form-fields" style="display: flex; flex-direction: column; gap: 0.75rem;">
             <div class="form-group">
               <label for="ideaTitle">Title</label>
-              <input type="text" id="ideaTitle" placeholder="e.g. World Environment Day Outreach" value="${prefillTitle}" required />
+              <input type="text" id="ideaTitle" placeholder="e.g. World Environment Day Outreach" value="${prefillTitle}" required style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" />
             </div>
             <div class="form-group">
               <label for="ideaClient">NGO Client</label>
-              <select id="ideaClient">
+              <select id="ideaClient" required style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
                 ${clientsList.map(c => `<option value="${c.id}" ${c.id === prefillClient ? 'selected' : ''}>${c.name}</option>`).join('')}
               </select>
             </div>
             <div class="form-group">
               <label for="ideaCampaign">Campaign</label>
-              <select id="ideaCampaign">
-                <option value="">None / General</option>
-                ${campaignsList.map(c => `<option value="${c.id}" ${c.id === prefillCampaignId ? 'selected' : ''}>${c.name}</option>`).join('')}
+              <select id="ideaCampaign" required style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="ideaSourceEvidence">Source Evidence</label>
+              <select id="ideaSourceEvidence" required style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
               </select>
             </div>
             <div class="form-group">
               <label for="ideaPlatform">Platform</label>
-              <select id="ideaPlatform">
+              <select id="ideaPlatform" style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
                 <option value="LinkedIn">LinkedIn</option>
                 <option value="Facebook">Facebook</option>
                 <option value="Instagram">Instagram</option>
@@ -7729,7 +7874,7 @@ function openNewIdeaModal(clientsList, prefill = null) {
             </div>
             <div class="form-group">
               <label for="ideaPillar">Content Pillar</label>
-              <select id="ideaPillar">
+              <select id="ideaPillar" style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
                 <option value="Phase 1: Awareness">Phase 1: Awareness</option>
                 <option value="Phase 2: Education">Phase 2: Education</option>
                 <option value="Phase 3: Action">Phase 3: Action</option>
@@ -7737,7 +7882,7 @@ function openNewIdeaModal(clientsList, prefill = null) {
             </div>
             <div class="form-group">
               <label for="ideaContent">Content Caption / Prompt Guideline</label>
-              <textarea id="ideaContent" rows="4" style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit;" placeholder="Enter post caption or guideline draft...">${prefillDescription}</textarea>
+              <textarea id="ideaContent" rows="4" style="width:100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit;" placeholder="Enter post caption or guideline draft..." required>${prefillDescription}</textarea>
             </div>
             
             <input type="hidden" id="ideaSourceRequestId" value="${prefillSourceRequestId}" />
@@ -7749,6 +7894,36 @@ function openNewIdeaModal(clientsList, prefill = null) {
   `;
   modal.style.display = 'flex';
 
+  const updateClientDropdowns = () => {
+    const selectedClientId = document.getElementById('ideaClient').value;
+    const clientCampaigns = (state.campaigns || []).filter(c => c.clientId === selectedClientId || c.client === selectedClientId);
+    const clientEvidence = (state.evidence || []).filter(e => e.clientId === selectedClientId || e.client === selectedClientId);
+    const clientMeetings = (state.meetings || []).filter(m => m.clientId === selectedClientId || m.client_id === selectedClientId);
+
+    const campaignSelect = document.getElementById('ideaCampaign');
+    const evidenceSelect = document.getElementById('ideaSourceEvidence');
+
+    if (campaignSelect) {
+      campaignSelect.innerHTML = clientCampaigns.map(c => `
+        <option value="${c.id}" ${c.id === prefillCampaignId ? 'selected' : ''}>${c.name}</option>
+      `).join('') || '<option value="">(No campaign - please create one first)</option>';
+    }
+
+    if (evidenceSelect) {
+      let optionsHtml = '';
+      clientEvidence.forEach(e => {
+        optionsHtml += `<option value="evidence:${e.id}">📄 ${e.originalName || e.name}</option>`;
+      });
+      clientMeetings.forEach(m => {
+        optionsHtml += `<option value="meeting:${m.id}">📅 Meeting: ${m.title}</option>`;
+      });
+      evidenceSelect.innerHTML = optionsHtml || '<option value="">(No evidence - please upload a document first)</option>';
+    }
+  };
+
+  updateClientDropdowns();
+  document.getElementById('ideaClient').addEventListener('change', updateClientDropdowns);
+
   document.getElementById('closeGlobalModal').addEventListener('click', () => {
     modal.style.display = 'none';
   });
@@ -7758,19 +7933,39 @@ function openNewIdeaModal(clientsList, prefill = null) {
     const title = document.getElementById('ideaTitle').value;
     const client = document.getElementById('ideaClient').value;
     const campaignId = document.getElementById('ideaCampaign').value;
+    const sourceVal = document.getElementById('ideaSourceEvidence').value;
     const platform = document.getElementById('ideaPlatform').value;
     const contentPillar = document.getElementById('ideaPillar').value;
     const content = document.getElementById('ideaContent').value;
     const sourceRequestId = document.getElementById('ideaSourceRequestId').value || null;
 
+    if (!campaignId) {
+      alert('Please select or create a Campaign for this NGO first.');
+      return;
+    }
+    if (!sourceVal) {
+      alert('Please select or upload Source Evidence first.');
+      return;
+    }
+
+    let sourceEvidenceId = null;
+    let sourceMeetingId = null;
+    if (sourceVal.startsWith('evidence:')) {
+      sourceEvidenceId = sourceVal.substring(9);
+    } else if (sourceVal.startsWith('meeting:')) {
+      sourceMeetingId = sourceVal.substring(8);
+    }
+
     addContentCard({
       title,
       client,
-      campaignId: campaignId || null,
+      campaignId,
+      sourceEvidenceId,
+      sourceMeetingId,
       platform,
       contentPillar,
       content,
-      status: 'Ideas',
+      status: 'Draft',
       agentId: 'manual',
       sourceRequestId: sourceRequestId || null
     });

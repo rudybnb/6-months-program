@@ -820,7 +820,6 @@ export async function loadClientWorkspaceData(clientId) {
       state.agentRuns = await runsRes.json();
     }
 
-    // Map database-backed ai_outputs to state.content for Kanban Board
     state.content = state.aiOutputs.map(o => {
       const camp = state.campaigns.find(cmp => cmp.id === o.campaignId);
       return {
@@ -829,7 +828,13 @@ export async function loadClientWorkspaceData(clientId) {
         campaign: camp ? camp.name : (o.outputType || 'Social Campaign'),
         title: o.title || o.outputType || 'Untitled Post',
         platform: o.platform || 'LinkedIn',
-        status: o.approvalStatus === 'Draft' ? 'Ideas' : (o.approvalStatus === 'Internal Review' ? 'Review' : (o.approvalStatus === 'Client Approved' ? 'Approval' : o.approvalStatus)),
+        status: (() => {
+          const s = o.approvalStatus;
+          if (s === 'Draft' || s === 'Ideas' || s === 'Drafting') return 'Draft';
+          if (s === 'Internal Review' || s === 'Review') return 'Review';
+          if (s === 'Client Approved' || s === 'Approved' || s === 'Approval') return 'Approved';
+          return s || 'Draft';
+        })(),
         approvalStatus: o.approvalStatus || 'Draft',
         content: o.content,
         aiGenerated: o.agentId !== 'manual',
@@ -929,13 +934,15 @@ export async function addContentCard(card) {
         agentId: card.agentId || 'manual',
         outputType: card.outputType || 'Social Post',
         content: card.content || 'Draft content text.',
-        approvalStatus: card.status || 'Ideas',
+        approvalStatus: card.status === 'Ideas' ? 'Draft' : (card.status || 'Draft'),
         contentPillar: card.contentPillar || 'Phase 1: Awareness',
         internalNotes: card.internalNotes || '',
         clientNotes: card.clientNotes || '',
         platform: card.platform || 'LinkedIn',
         title: card.title || 'Untitled Post',
-        sourceRequestId: card.sourceRequestId || null
+        sourceRequestId: card.sourceRequestId || null,
+        sourceEvidenceId: card.sourceEvidenceId || null,
+        sourceMeetingId: card.sourceMeetingId || null
       })
     });
     if (res.ok) {
@@ -947,18 +954,28 @@ export async function addContentCard(card) {
 }
 
 export async function updateContentStatus(cardId, newStatus, extraParams = {}) {
+  const card = state.content.find(c => c.id === cardId);
+  if (card) {
+    if (newStatus === 'Scheduled' && card.status !== 'Approved') {
+      alert('Validation error: Post must be Approved before it can be Scheduled.');
+      return;
+    }
+    if (newStatus === 'Published' && card.status !== 'Scheduled') {
+      alert('Validation error: Post must be Scheduled before it can be Published.');
+      return;
+    }
+  }
+
   let dbStatus = newStatus;
-  if (newStatus === 'Ideas') dbStatus = 'Draft';
+  if (newStatus === 'Draft' || newStatus === 'Ideas') dbStatus = 'Draft';
   else if (newStatus === 'Review') dbStatus = 'Internal Review';
-  else if (newStatus === 'Approval') dbStatus = 'Client Approved';
-  // Canva-specific statuses pass through directly:
-  // 'Brief Generated', 'In Canva Design', 'Canva Draft Uploaded',
-  // 'Internal Review', 'Client Approved', 'Scheduled / Published'
+  else if (newStatus === 'Approved' || newStatus === 'Approval') dbStatus = 'Client Approved';
+
   await updateAiOutputStatus(cardId, dbStatus, undefined, extraParams);
 }
 
 export async function approveContentCard(cardId) {
-  await updateAiOutputStatus(cardId, 'Approved');
+  await updateAiOutputStatus(cardId, 'Client Approved');
 }
 
 export async function updateContentDetails(cardId, updates) {
@@ -1113,12 +1130,18 @@ export function runAIPipeline(evidence, clientId) {
           
           // Save generated draft content to server database
           try {
+            const clientCampaign = state.campaigns.find(c => c.clientId === clientId || c.client === clientId);
+            const campaignId = clientCampaign ? clientCampaign.id : null;
+            const evidenceDoc = state.evidence.find(e => e.clientId === clientId);
+            const sourceEvidenceId = evidenceDoc ? evidenceDoc.id : (state.evidence[0]?.id || 'ev_report_pdf');
+
             await addAiOutput({
               clientId,
+              campaignId,
               agentId: 'socialmedia',
               outputType: 'LinkedIn/Facebook drafts',
               content: `LinkedIn: Impact Alert! we highlight ${clientName}'s latest initiative: "${evidence}"`,
-              sourceEvidenceId: state.evidence[0]?.id || 'ev_report_pdf'
+              sourceEvidenceId
             });
           } catch (outErr) {
             console.error('Failed to auto-insert pipeline output:', outErr);

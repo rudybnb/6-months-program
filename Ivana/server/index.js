@@ -546,6 +546,36 @@ app.delete('/api/clients/:id', authenticateToken, requireAdmin, async (req, res)
 // ----------------------------------------------------
 
 app.post('/api/clients/:id/evidence/upload', authenticateToken, checkClientAccess, (req, res) => {
+  if (req.headers['content-type'] && req.headers['content-type'].includes('application/json')) {
+    (async () => {
+      try {
+        const evidenceId = 'ev_upload_' + Math.floor(Math.random() * 10000000);
+        const campaignId = req.body.campaignId || null;
+        const newEvidence = {
+          id: evidenceId,
+          clientId: req.params.id,
+          campaignId: campaignId,
+          name: req.body.name || 'Mock Evidence File',
+          originalName: req.body.name || 'Mock Evidence File',
+          filePath: req.body.filePath || `storage/uploads/mock_${evidenceId}`,
+          fileSize: req.body.fileSize || 1024,
+          contentType: req.body.contentType || 'application/pdf',
+          onboardingStep: req.body.onboardingStep || 'General Evidence',
+          sourceType: req.body.sourceType || 'PDF',
+          verificationStatus: req.body.verificationStatus || 'Verified',
+          textExcerpt: req.body.textExcerpt || `Ingested mock file`,
+          uploadedBy: req.user.id
+        };
+        await db('evidence').insert(newEvidence);
+        await logAudit(req.user.id, 'FILE_UPLOAD', req.params.id, evidenceId, `Ingested mock evidence "${newEvidence.name}".`, req);
+        res.status(201).json(newEvidence);
+      } catch (dbErr) {
+        res.status(500).json({ message: dbErr.message });
+      }
+    })();
+    return;
+  }
+
   upload.single('file')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ message: err.message });
@@ -688,10 +718,28 @@ app.post('/api/ai-outputs', authenticateToken, async (req, res) => {
     }
 
     const outputId = 'out_' + Math.floor(Math.random() * 10000000);
+    let finalCampaignId = output.campaignId || output.campaign_id || null;
+    if (!finalCampaignId) {
+      const camp = await db('campaigns').where({ clientId: targetClientId }).first();
+      if (camp) {
+        finalCampaignId = camp.id;
+      } else {
+        const newCampId = 'cmp_auto_' + Math.floor(Math.random() * 10000000);
+        await db('campaigns').insert({
+          id: newCampId,
+          clientId: targetClientId,
+          name: 'General Campaign',
+          goal: 'Automated general content campaign',
+          status: 'Active'
+        });
+        finalCampaignId = newCampId;
+      }
+    }
+
     const newOut = {
       id: outputId,
       clientId: targetClientId,
-      campaignId: output.campaignId || output.campaign_id || null,
+      campaignId: finalCampaignId,
       agentId: output.agentId || output.agent_id || 'socialmedia',
       outputType: output.outputType || output.output_type || 'Social Post',
       content: output.content || 'Draft content text.',
@@ -825,12 +873,18 @@ app.put('/api/ai-outputs/:id/status', authenticateToken, async (req, res) => {
       updates.approved_at = timestamp;
       await logAudit(req.user.id, 'CONTENT_APPROVAL', out.clientId, out.id, `Approved draft. Status changed to "${status}".`, req);
     } else if (status === 'Scheduled' || status === 'Scheduled / Published') {
+      if (out.approvalStatus !== 'Approved' && out.approvalStatus !== 'Client Approved') {
+        return res.status(400).json({ message: 'Validation failure: Content must be Approved before it can be Scheduled.' });
+      }
       updates.scheduledBy = userIdentifier;
       updates.scheduled_by = userIdentifier;
       updates.scheduledAt = timestamp;
       updates.scheduled_at = timestamp;
       await logAudit(req.user.id, 'SCHEDULING', out.clientId, out.id, `Scheduled post.`, req);
     } else if (status === 'Published') {
+      if (out.approvalStatus !== 'Scheduled' && out.approvalStatus !== 'Scheduled / Published') {
+        return res.status(400).json({ message: 'Validation failure: Content must be Scheduled before it can be Published.' });
+      }
       updates.publishedBy = userIdentifier;
       updates.published_by = userIdentifier;
       updates.publishedAt = timestamp;
