@@ -1571,9 +1571,10 @@ function openDraftDetailsPage(item, container) {
               </div>
               <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                 ${isCanvaBrief ? (() => {
-                  const stages = ['Brief Generated', 'In Canva Design', 'Canva Draft Uploaded', 'Review', 'Client Approved', 'Scheduled / Published'];
+                  const stages = ['Brief Generated', 'In Canva Design', 'Canva Draft Uploaded', 'Internal Review', 'Client Approved', 'Scheduled / Published'];
                   let currentStatus = displayStatus;
                   if (currentStatus === 'Draft') currentStatus = 'Brief Generated';
+                  if (currentStatus === 'Review') currentStatus = 'Internal Review';
                   if (currentStatus === 'Approved') currentStatus = 'Client Approved';
                   
                   const currentIdx = stages.indexOf(currentStatus);
@@ -1607,7 +1608,7 @@ function openDraftDetailsPage(item, container) {
                   return `
                     ${getCanvaBtnHtml('In Canva Design', 'btnMarkInCanva', 'In Canva Design', 'In Canva Design', 'background:#ede9fe; border:1px solid #c4b5fd; color:#5b21b6;', 'background:#ede9fe; border:1px solid #c4b5fd; color:#5b21b6;')}
                     ${getCanvaBtnHtml('Canva Draft Uploaded', 'btnMarkCanvaDraft', 'Canva Draft Uploaded', 'Canva Draft Uploaded', 'background:#fef3c7; border:1px solid #fde68a; color:#92400e;', 'background:#fef3c7; border:1px solid #fde68a; color:#92400e;')}
-                    ${getCanvaBtnHtml('Review', 'btnSendDraftReview', 'Internal Review', 'Internal Review', 'border:1px solid #cbd5e1; color:#1e293b;', 'background:#dcfce7; border:1px solid #86efac; color:#15803d;')}
+                    ${getCanvaBtnHtml('Internal Review', 'btnSendDraftReview', 'Internal Review', 'Internal Review', 'border:1px solid #cbd5e1; color:#1e293b;', 'background:#dcfce7; border:1px solid #86efac; color:#15803d;')}
                     ${getCanvaBtnHtml('Client Approved', 'btnApproveDraft', 'Client Approved', 'Client Approved', 'background:#10b981; border:1px solid #10b981; color:white; font-weight:700;', 'background:#dcfce7; border:1px solid #86efac; color:#15803d;')}
                     ${getCanvaBtnHtml('Scheduled / Published', 'btnScheduleDraft', 'Scheduled / Published', 'Scheduled / Published', 'background:#dcfce7; border:1px solid #86efac; color:#166534;', 'background:#dcfce7; border:1px solid #86efac; color:#15803d;')}
                   `;
