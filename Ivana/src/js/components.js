@@ -1570,18 +1570,92 @@ function openDraftDetailsPage(item, container) {
                 <button class="btn btn-sm btn-outline" id="btnRequestDraftChanges" style="color:#b91c1c; border-color:#fca5a5; padding:0.4rem 0.8rem; font-weight:600;">Request Changes</button>
               </div>
               <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-                ${isCanvaBrief ? `
-                  <button class="btn btn-sm btn-outline" id="btnMarkInCanva" style="background:#ede9fe; border-color:#c4b5fd; color:#5b21b6; padding:0.4rem 0.8rem; font-weight:600;" title="Mark as sent to designer in Canva">✏️ In Canva Design</button>
-                  <button class="btn btn-sm btn-outline" id="btnMarkCanvaDraft" style="background:#fef3c7; border-color:#fde68a; color:#92400e; padding:0.4rem 0.8rem; font-weight:600;" title="Mark as Canva draft uploaded by designer">📤 Canva Draft Uploaded</button>
-                  <button class="btn btn-sm btn-outline" id="btnSendDraftReview" style="padding:0.4rem 0.8rem; font-weight:600;">👁 Internal Review</button>
-                  <button class="btn btn-sm btn-primary" id="btnApproveDraft" style="background:#10b981; border-color:#10b981; color:white; padding:0.4rem 1rem; font-weight:700;">✓ Client Approved</button>
-                  <button class="btn btn-sm btn-outline" id="btnScheduleDraft" style="background:#dcfce7; border-color:#86efac; color:#166534; padding:0.4rem 0.8rem; font-weight:600;">📅 Scheduled / Published</button>
-                ` : `
-                  <button class="btn btn-sm btn-outline" id="btnSendDraftReview" style="padding:0.4rem 0.8rem; font-weight:600;">Send to Review</button>
-                  <button class="btn btn-sm btn-primary" id="btnApproveDraft" style="background:#10b981; border-color:#10b981; color:white; padding:0.4rem 1rem; font-weight:700;">Approve</button>
-                  <button class="btn btn-sm btn-outline" id="btnScheduleDraft" style="padding:0.4rem 0.8rem; font-weight:600;">Schedule</button>
-                  <button class="btn btn-sm btn-outline" id="btnPublishDraft" style="padding:0.4rem 0.8rem; font-weight:600;">Publish</button>
-                `}
+                ${isCanvaBrief ? (() => {
+                  const stages = ['Brief Generated', 'In Canva Design', 'Canva Draft Uploaded', 'Review', 'Client Approved', 'Scheduled / Published'];
+                  let currentStatus = displayStatus;
+                  if (currentStatus === 'Draft') currentStatus = 'Brief Generated';
+                  if (currentStatus === 'Approved') currentStatus = 'Client Approved';
+                  
+                  const currentIdx = stages.indexOf(currentStatus);
+
+                  const getCanvaBtnHtml = (targetStage, id, activeLabel, completedLabel, activeStyle, completedStyle) => {
+                    const targetIdx = stages.indexOf(targetStage);
+
+                    if (currentIdx >= targetIdx) {
+                      return `
+                        <button class="btn btn-sm" id="${id}" disabled style="${completedStyle || 'background:#dcfce7; border:1px solid #86efac; color:#15803d;'} padding:0.4rem 0.8rem; font-weight:700; cursor:not-allowed; opacity:0.9;">
+                          ✓ ${completedLabel}
+                        </button>
+                      `;
+                    }
+
+                    if (currentIdx === targetIdx - 1) {
+                      return `
+                        <button class="btn btn-sm" id="${id}" style="${activeStyle} padding:0.4rem 0.8rem; font-weight:600;">
+                          ${activeLabel}
+                        </button>
+                      `;
+                    }
+
+                    return `
+                      <button class="btn btn-sm" id="${id}" disabled style="background:#f1f5f9; border:1px solid #e2e8f0; color:#94a3b8; padding:0.4rem 0.8rem; font-weight:600; cursor:not-allowed; opacity:0.6;">
+                        🔒 ${activeLabel}
+                      </button>
+                    `;
+                  };
+
+                  return `
+                    ${getCanvaBtnHtml('In Canva Design', 'btnMarkInCanva', 'In Canva Design', 'In Canva Design', 'background:#ede9fe; border:1px solid #c4b5fd; color:#5b21b6;', 'background:#ede9fe; border:1px solid #c4b5fd; color:#5b21b6;')}
+                    ${getCanvaBtnHtml('Canva Draft Uploaded', 'btnMarkCanvaDraft', 'Canva Draft Uploaded', 'Canva Draft Uploaded', 'background:#fef3c7; border:1px solid #fde68a; color:#92400e;', 'background:#fef3c7; border:1px solid #fde68a; color:#92400e;')}
+                    ${getCanvaBtnHtml('Review', 'btnSendDraftReview', 'Internal Review', 'Internal Review', 'border:1px solid #cbd5e1; color:#1e293b;', 'background:#dcfce7; border:1px solid #86efac; color:#15803d;')}
+                    ${getCanvaBtnHtml('Client Approved', 'btnApproveDraft', 'Client Approved', 'Client Approved', 'background:#10b981; border:1px solid #10b981; color:white; font-weight:700;', 'background:#dcfce7; border:1px solid #86efac; color:#15803d;')}
+                    ${getCanvaBtnHtml('Scheduled / Published', 'btnScheduleDraft', 'Scheduled / Published', 'Scheduled / Published', 'background:#dcfce7; border:1px solid #86efac; color:#166534;', 'background:#dcfce7; border:1px solid #86efac; color:#15803d;')}
+                  `;
+                })() : (() => {
+                  const stages = ['Draft', 'Review', 'Approved', 'Scheduled', 'Published'];
+                  const currentIdx = stages.indexOf(displayStatus);
+
+                  const getBtnHtml = (targetStage, id, activeLabel, completedLabel, isActivePrimary = false) => {
+                    const targetIdx = stages.indexOf(targetStage);
+                    
+                    if (currentIdx >= targetIdx) {
+                      return `
+                        <button class="btn btn-sm" id="${id}" disabled style="background:#dcfce7; border:1px solid #86efac; color:#15803d; padding:0.4rem 0.8rem; font-weight:700; cursor:not-allowed; opacity:0.9;">
+                          ✓ ${completedLabel}
+                        </button>
+                      `;
+                    }
+                    
+                    if (currentIdx === targetIdx - 1) {
+                      if (isActivePrimary) {
+                        return `
+                          <button class="btn btn-sm btn-primary" id="${id}" style="background:#10b981; border-color:#10b981; color:white; padding:0.4rem 1rem; font-weight:700;">
+                            ${activeLabel}
+                          </button>
+                        `;
+                      } else {
+                        return `
+                          <button class="btn btn-sm btn-outline" id="${id}" style="padding:0.4rem 0.8rem; font-weight:600; border:1px solid #cbd5e1; color:#1e293b;">
+                            ${activeLabel}
+                          </button>
+                        `;
+                      }
+                    }
+                    
+                    return `
+                      <button class="btn btn-sm" id="${id}" disabled style="background:#f1f5f9; border:1px solid #e2e8f0; color:#94a3b8; padding:0.4rem 0.8rem; font-weight:600; cursor:not-allowed; opacity:0.6;">
+                        🔒 ${activeLabel}
+                      </button>
+                    `;
+                  };
+
+                  return `
+                    ${getBtnHtml('Review', 'btnSendDraftReview', 'Send to Review', 'Sent to Review')}
+                    ${getBtnHtml('Approved', 'btnApproveDraft', 'Approve', 'Approved', true)}
+                    ${getBtnHtml('Scheduled', 'btnScheduleDraft', 'Schedule', 'Scheduled')}
+                    ${getBtnHtml('Published', 'btnPublishDraft', 'Publish', 'Published')}
+                  `;
+                })()}
               </div>
             </div>
 
