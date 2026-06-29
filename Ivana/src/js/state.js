@@ -871,11 +871,14 @@ export async function generateInitialDeliveryPlan(clientId) {
     const res = await authFetch(`${API_BASE}/api/clients/${clientId}/tasks/generate-initial`, {
       method: 'POST'
     });
-    if (res.ok) {
-      await loadClientWorkspaceData(clientId);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || `Server returned status code ${res.status}`);
     }
+    await loadClientWorkspaceData(clientId);
   } catch (err) {
     console.error('Failed to generate initial delivery plan:', err);
+    throw err;
   }
 }
 

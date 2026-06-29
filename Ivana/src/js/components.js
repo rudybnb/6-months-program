@@ -2351,6 +2351,29 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
   `;
 }
 
+function showToast(message) {
+  const toast = document.createElement('div');
+  toast.className = 'toast-alert';
+  toast.style.position = 'fixed';
+  toast.style.bottom = '20px';
+  toast.style.right = '20px';
+  toast.style.background = '#10b981';
+  toast.style.color = '#ffffff';
+  toast.style.padding = '0.75rem 1.5rem';
+  toast.style.borderRadius = '8px';
+  toast.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)';
+  toast.style.zIndex = '99999';
+  toast.style.fontWeight = '700';
+  toast.style.fontSize = '0.875rem';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = 'opacity 0.5s ease';
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 500);
+  }, 3000);
+}
+
 // RENDER SINGLE CLIENT PROFILE VIEW
 function renderClientProfile(container, clientId) {
   const client = state.clients.find(c => c.id === clientId);
@@ -2959,11 +2982,12 @@ function renderClientProfile(container, clientId) {
   const generatePlanBtn = container.querySelector('#btnGenerateDeliveryPlan');
   if (generatePlanBtn) {
     generatePlanBtn.addEventListener('click', async () => {
+      if (generatePlanBtn.disabled) return;
       try {
         generatePlanBtn.disabled = true;
         generatePlanBtn.textContent = '⚡ Generating Plan...';
         await generateInitialDeliveryPlan(client.id);
-        alert('Initial Delivery Plan generated! 7 real database tasks have been added.');
+        showToast('Initial Delivery Plan generated! 7 real database tasks have been added.');
         renderClientProfile(container, client.id);
       } catch (err) {
         alert('Failed to generate delivery plan: ' + err.message);
