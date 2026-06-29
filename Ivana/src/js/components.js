@@ -3766,6 +3766,124 @@ function openBufferComposerModal(item, container) {
     activePreviewPlatform = 'LinkedIn';
   }
 
+  const isPublished = item.status === 'Published';
+
+  const getStepClass = (stepName) => {
+    const stages = ['Draft', 'Review', 'Approved', 'Scheduled', 'Published'];
+    const currentIdx = stages.indexOf(item.status);
+    const targetIdx = stages.indexOf(stepName);
+
+    if (currentIdx === targetIdx) {
+      return 'step-current';
+    } else if (currentIdx > targetIdx) {
+      return 'step-completed';
+    } else {
+      return 'step-locked';
+    }
+  };
+
+  const getStepBadge = (stepName) => {
+    const formatTime = (isoString) => {
+      if (!isoString) return '';
+      const date = new Date(isoString);
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
+    if (stepName === 'Draft') {
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">Created</span>`;
+    }
+    if (stepName === 'Review' && (item.reviewedBy || item.reviewedAt || ['Approved', 'Scheduled', 'Published'].includes(item.status))) {
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${item.reviewedBy || ngo.primaryContact || 'Irene'} <br/> ${formatTime(item.reviewedAt) || 'Done'}</span>`;
+    }
+    if (stepName === 'Approved' && (item.approvedBy || item.approvedAt || ['Scheduled', 'Published'].includes(item.status))) {
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${item.approvedBy || ngo.primaryContact || 'Irene'} <br/> ${formatTime(item.approvedAt) || 'Done'}</span>`;
+    }
+    if (stepName === 'Scheduled' && (item.scheduledBy || item.scheduledAt || item.status === 'Published')) {
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${item.scheduledBy || ngo.primaryContact || 'Irene'} <br/> ${formatTime(item.scheduledAt) || 'Done'}</span>`;
+    }
+    if (stepName === 'Published' && item.status === 'Published') {
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${item.publishedBy || ngo.primaryContact || 'Irene'} <br/> ${formatTime(item.publishedAt) || 'Done'}</span>`;
+    }
+    return '';
+  };
+
+  const outstandingBoxHtml = (() => {
+    if (item.status === 'Draft') {
+      return `
+        <div class="outstanding-box" style="background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:0.75rem; border-radius:8px; font-size:0.75rem; margin-bottom:1rem; line-height:1.4;">
+          <strong>📋 What is outstanding?</strong>
+          <div style="margin-top:0.25rem;">• Post copy is written. Needs internal or team <strong>Review</strong>.</div>
+          <div>• Action: Click <strong>"Submit for Review"</strong> in the bottom right corner to proceed.</div>
+        </div>
+      `;
+    }
+    if (item.status === 'Review') {
+      return `
+        <div class="outstanding-box" style="background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:0.75rem; border-radius:8px; font-size:0.75rem; margin-bottom:1rem; line-height:1.4;">
+          <strong>📋 What is outstanding?</strong>
+          <div style="margin-top:0.25rem;">• Post is currently in <strong>Internal Review</strong>.</div>
+          <div>• Action: Needs client or contact <strong>Approval</strong>. Click <strong>"Approve Post"</strong> to progress.</div>
+        </div>
+      `;
+    }
+    if (item.status === 'Approved') {
+      return `
+        <div class="outstanding-box" style="background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:0.75rem; border-radius:8px; font-size:0.75rem; margin-bottom:1rem; line-height:1.4;">
+          <strong>📋 What is outstanding?</strong>
+          <div style="margin-top:0.25rem;">• Post is <strong>Approved</strong> and locked for publishing slots.</div>
+          <div>• Action: Needs to be scheduled. Click <strong>"Schedule Post"</strong> to lock in calendar/queue.</div>
+        </div>
+      `;
+    }
+    if (item.status === 'Scheduled') {
+      return `
+        <div class="outstanding-box" style="background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:0.75rem; border-radius:8px; font-size:0.75rem; margin-bottom:1rem; line-height:1.4;">
+          <strong>📋 What is outstanding?</strong>
+          <div style="margin-top:0.25rem;">• Post is <strong>Scheduled</strong> and queued for release.</div>
+          <div>• Action: Ready to go live. Click <strong>"Publish Now"</strong> to output post.</div>
+        </div>
+      `;
+    }
+    if (item.status === 'Published') {
+      return `
+        <div class="outstanding-box" style="background:#dcfce7; border:1px solid #bbf7d0; color:#166534; padding:0.75rem; border-radius:8px; font-size:0.75rem; margin-bottom:1rem; line-height:1.4;">
+          <strong>✅ Published/Complete</strong>
+          <div style="margin-top:0.25rem;">• Post is live on <strong>${item.platform}</strong>.</div>
+          <div>• Status: Complete. All workflow stages successfully navigated.</div>
+        </div>
+      `;
+    }
+    return '';
+  })();
+
+  const trackerHtml = `
+    <div class="workflow-stepper-tracker" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; padding:0.75rem; border-radius:10px; margin-bottom:1rem; gap:0.25rem;">
+      ${['Draft', 'Review', 'Approved', 'Scheduled', 'Published'].map((step, idx, arr) => {
+        const cls = getStepClass(step);
+        let bg = '#f1f5f9';
+        let fg = '#94a3b8';
+        let border = '1px solid #e2e8f0';
+        if (cls === 'step-current') {
+          bg = '#eff6ff';
+          fg = '#1d4ed8';
+          border = '2px solid #3b82f6';
+        } else if (cls === 'step-completed') {
+          bg = '#f0fdf4';
+          fg = '#166534';
+          border = '1px solid #bbf7d0';
+        }
+        const badge = getStepBadge(step);
+        return `
+          <div style="flex:1; text-align:center; padding:0.4rem; border-radius:6px; background:${bg}; color:${fg}; border:${border}; display:flex; flex-direction:column; gap:0.1rem; min-width:80px; box-shadow:var(--shadow-xs);">
+            <span style="font-size:0.75rem; font-weight:700;">${step}</span>
+            ${badge}
+          </div>
+          ${idx < arr.length - 1 ? '<span style="color:#cbd5e1; font-weight:bold; font-size:0.8rem;">→</span>' : ''}
+        `;
+      }).join('')}
+    </div>
+  `;
+
   const renderModalContent = () => {
     modal.innerHTML = `
       <div class="modal-dialog modal-lg">
@@ -3774,19 +3892,21 @@ function openBufferComposerModal(item, container) {
             <h2>📱 Buffer Composer & Social Channel Preview</h2>
             <button class="close-modal-btn" id="closeGlobalModal">×</button>
           </div>
-          <div class="modal-body buffer-composer-body">
+          <div class="modal-body buffer-composer-body" style="padding-top: 0.75rem;">
+            ${trackerHtml}
+            ${outstandingBoxHtml}
             <div class="composer-split-grid">
               
               <!-- Editor Side -->
               <div class="composer-editor-side" style="display: flex; flex-direction: column; gap: 0.75rem;">
                 <div class="form-group">
                   <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Title / Idea Name</label>
-                  <input type="text" id="composerTitle" value="${item.title || ''}" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-weight: 600;" required />
+                  <input type="text" id="composerTitle" value="${item.title || ''}" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-weight: 600;" required ${isPublished ? 'disabled' : ''} />
                 </div>
                 
                 <div class="form-group">
                   <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Target Channel Platform</label>
-                  <select id="composerPlatform" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                  <select id="composerPlatform" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" ${isPublished ? 'disabled' : ''}>
                     <option value="LinkedIn" ${item.platform === 'LinkedIn' ? 'selected' : ''}>LinkedIn</option>
                     <option value="Facebook" ${item.platform === 'Facebook' ? 'selected' : ''}>Facebook</option>
                     <option value="Instagram" ${item.platform === 'Instagram' ? 'selected' : ''}>Instagram</option>
@@ -3798,7 +3918,7 @@ function openBufferComposerModal(item, container) {
 
                 <div class="form-group">
                   <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Content Pillar</label>
-                  <select id="composerPillar" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;">
+                  <select id="composerPillar" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" ${isPublished ? 'disabled' : ''}>
                     <option value="Phase 1: Awareness" ${item.contentPillar === 'Phase 1: Awareness' ? 'selected' : ''}>Phase 1: Awareness</option>
                     <option value="Phase 2: Education" ${item.contentPillar === 'Phase 2: Education' ? 'selected' : ''}>Phase 2: Education</option>
                     <option value="Phase 3: Action" ${item.contentPillar === 'Phase 3: Action' ? 'selected' : ''}>Phase 3: Action</option>
@@ -3807,24 +3927,24 @@ function openBufferComposerModal(item, container) {
 
                 <div class="form-group">
                   <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Edit Post Caption Draft</label>
-                  <textarea id="composerTextarea" class="composer-input-textarea" style="width: 100%; height: 160px; font-family: inherit; font-size: 0.88rem; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; outline: none; resize: vertical;" placeholder="Type social copy here...">${item.content || ''}</textarea>
+                  <textarea id="composerTextarea" class="composer-input-textarea" style="width: 100%; height: 160px; font-family: inherit; font-size: 0.88rem; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; outline: none; resize: vertical;" placeholder="Type social copy here..." ${isPublished ? 'disabled' : ''}>${item.content || ''}</textarea>
                 </div>
 
                 ${state.currentUserRole === 'admin' ? `
                   <div class="form-group">
                     <label style="font-weight: 600; color: var(--primary-color); display: block; margin-bottom: 0.25rem;">📝 Internal Notes (Admin-only)</label>
-                    <textarea id="composerInternalNotes" rows="2" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit; font-size: 0.8rem;" placeholder="Admin internal coordination notes...">${item.internalNotes || ''}</textarea>
+                    <textarea id="composerInternalNotes" rows="2" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit; font-size: 0.8rem;" placeholder="Admin internal coordination notes..." ${isPublished ? 'disabled' : ''}>${item.internalNotes || ''}</textarea>
                   </div>
                 ` : ''}
 
                 <div class="form-group">
                   <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">💬 Client Notes & Feedback</label>
-                  <textarea id="composerClientNotes" rows="2" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit; font-size: 0.8rem;" placeholder="Client feedback notes...">${item.clientNotes || ''}</textarea>
+                  <textarea id="composerClientNotes" rows="2" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; font-family: inherit; font-size: 0.8rem;" placeholder="Client feedback notes..." ${isPublished ? 'disabled' : ''}>${item.clientNotes || ''}</textarea>
                 </div>
 
                 <div class="form-group">
                   <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Campaign Scope</label>
-                  <select id="composerCampaign" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" required>
+                  <select id="composerCampaign" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" required ${isPublished ? 'disabled' : ''}>
                     ${(state.campaigns || []).filter(c => c.clientId === item.client || c.client === item.client).map(c => `
                       <option value="${c.id}" ${item.campaignId === c.id ? 'selected' : ''}>${c.name}</option>
                     `).join('') || '<option value="">(No campaign found)</option>'}
@@ -3833,7 +3953,7 @@ function openBufferComposerModal(item, container) {
 
                 <div class="form-group">
                   <label style="font-weight: 600; display: block; margin-bottom: 0.25rem;">Source Evidence</label>
-                  <select id="composerSourceEvidence" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" required>
+                  <select id="composerSourceEvidence" style="width: 100%; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem;" required ${isPublished ? 'disabled' : ''}>
                     ${(state.evidence || []).filter(e => e.clientId === item.client || e.client === item.client).map(e => `
                       <option value="evidence:${e.id}" ${item.sourceEvidenceId === e.id ? 'selected' : ''}>📄 ${e.originalName || e.name}</option>
                     `).join('')}
@@ -3861,9 +3981,11 @@ function openBufferComposerModal(item, container) {
 
             <div class="modal-footer mt-6" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
               <button class="btn btn-outline" id="copyComposerTextBtn">Copy Text</button>
-              <button class="btn btn-outline" id="saveComposerBtn">Save Changes</button>
+              ${isPublished ? '' : `<button class="btn btn-outline" id="saveComposerBtn">Save Changes</button>`}
               ${(() => {
-                if (item.status === 'Draft' || item.status === 'Review') {
+                if (item.status === 'Draft') {
+                  return `<button class="btn btn-primary" id="composerSubmitReviewBtn">Submit for Review</button>`;
+                } else if (item.status === 'Review') {
                   return `<button class="btn btn-primary" id="composerApproveBtn">Approve Post</button>`;
                 } else if (item.status === 'Approved') {
                   return `<button class="btn btn-primary" id="composerScheduleBtn">Schedule Post</button>`;
@@ -4044,14 +4166,28 @@ function openBufferComposerModal(item, container) {
       return true;
     };
 
-    document.getElementById('saveComposerBtn').addEventListener('click', async () => {
-      const ok = await saveChangesHelper();
-      if (ok) {
-        alert('Changes saved successfully!');
-        modal.style.display = 'none';
-        renderContentModule(container);
-      }
-    });
+    if (document.getElementById('saveComposerBtn')) {
+      document.getElementById('saveComposerBtn').addEventListener('click', async () => {
+        const ok = await saveChangesHelper();
+        if (ok) {
+          alert('Changes saved successfully!');
+          modal.style.display = 'none';
+          renderContentModule(container);
+        }
+      });
+    }
+
+    if (document.getElementById('composerSubmitReviewBtn')) {
+      document.getElementById('composerSubmitReviewBtn').addEventListener('click', async () => {
+        const ok = await saveChangesHelper('Internal Review');
+        if (ok) {
+          await updateContentStatus(item.id, 'Review');
+          alert('Post submitted for internal review!');
+          modal.style.display = 'none';
+          renderContentModule(container);
+        }
+      });
+    }
 
     if (document.getElementById('composerApproveBtn')) {
       document.getElementById('composerApproveBtn').addEventListener('click', async () => {
