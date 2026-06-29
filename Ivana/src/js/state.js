@@ -1421,6 +1421,21 @@ export async function updateAiOutputStatus(id, newStatus, approvedBy = 'Irene K.
   }
 }
 
+export async function updateReportStatus(reportId, newStatus) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/reports/${reportId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    if (res.ok) {
+      await loadClientWorkspaceData(state.selectedClientId);
+    }
+  } catch (err) {
+    console.error('Report status update failed:', err);
+  }
+}
+
 export async function updateClientBrief(clientId, briefData) {
   try {
     const res = await authFetch(`${API_BASE}/api/clients/${clientId}/brief`, {

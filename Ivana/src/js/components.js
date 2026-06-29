@@ -1728,7 +1728,7 @@ function renderClientDeliveryPlanHtml(client, clientCampaigns, clientEvidence, c
   const hasContent = clientContent.length > 0 || clientReports.length > 0;
   const hasReview = clientContent.some(c => c.status === 'Review') || clientReports.some(r => r.status === 'Pending Review');
   const hasApprove = clientContent.some(c => c.status === 'Approved') || clientReports.some(r => r.status === 'Sent to Client');
-  const hasPublish = clientContent.some(c => ['Scheduled', 'Published'].includes(c.status)) || clientReports.some(r => r.status === 'Submitted');
+  const hasPublish = clientContent.some(c => ['Scheduled', 'Published'].includes(c.status)) || clientReports.some(r => ['Submitted', 'Published'].includes(r.status));
 
   const stepperHtml = `
     <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1.25rem; border-radius:12px; margin-bottom:1.5rem;">
@@ -3767,6 +3767,9 @@ function openBufferComposerModal(item, container) {
   }
 
   const isPublished = item.status === 'Published';
+  const badgeBg = item.status === 'Published' ? '#dcfce7' : (item.status === 'Scheduled' ? '#fef3c7' : '#eff6ff');
+  const badgeFg = item.status === 'Published' ? '#15803d' : (item.status === 'Scheduled' ? '#92400e' : '#1d4ed8');
+  const badgeBorder = item.status === 'Published' ? '1px solid #86efac' : (item.status === 'Scheduled' ? '1px solid #fcd34d' : '1px solid #3b82f6');
 
   const getStepClass = (stepName) => {
     const stages = ['Draft', 'Review', 'Approved', 'Scheduled', 'Published'];
@@ -3792,17 +3795,25 @@ function openBufferComposerModal(item, container) {
     if (stepName === 'Draft') {
       return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">Created</span>`;
     }
-    if (stepName === 'Review' && (item.reviewedBy || item.reviewedAt || ['Approved', 'Scheduled', 'Published'].includes(item.status))) {
-      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${item.reviewedBy || ngo.primaryContact || 'Irene'} <br/> ${formatTime(item.reviewedAt) || 'Done'}</span>`;
+    if (stepName === 'Review' && (item.reviewedBy || item.reviewed_by || item.reviewedAt || item.reviewed_at || ['Approved', 'Scheduled', 'Published'].includes(item.status))) {
+      const revBy = item.reviewedBy || item.reviewed_by || ngo.primaryContact || 'Irene';
+      const revAt = item.reviewedAt || item.reviewed_at;
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${revBy} <br/> ${formatTime(revAt) || 'Done'}</span>`;
     }
-    if (stepName === 'Approved' && (item.approvedBy || item.approvedAt || ['Scheduled', 'Published'].includes(item.status))) {
-      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${item.approvedBy || ngo.primaryContact || 'Irene'} <br/> ${formatTime(item.approvedAt) || 'Done'}</span>`;
+    if (stepName === 'Approved' && (item.approvedBy || item.approved_by || item.approvedAt || item.approved_at || ['Scheduled', 'Published'].includes(item.status))) {
+      const appBy = item.approvedBy || item.approved_by || ngo.primaryContact || 'Irene';
+      const appAt = item.approvedAt || item.approved_at;
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${appBy} <br/> ${formatTime(appAt) || 'Done'}</span>`;
     }
-    if (stepName === 'Scheduled' && (item.scheduledBy || item.scheduledAt || item.status === 'Published')) {
-      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${item.scheduledBy || ngo.primaryContact || 'Irene'} <br/> ${formatTime(item.scheduledAt) || 'Done'}</span>`;
+    if (stepName === 'Scheduled' && (item.scheduledBy || item.scheduled_by || item.scheduledAt || item.scheduled_at || item.status === 'Published')) {
+      const schBy = item.scheduledBy || item.scheduled_by || ngo.primaryContact || 'Irene';
+      const schAt = item.scheduledAt || item.scheduled_at;
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${schBy} <br/> ${formatTime(schAt) || 'Done'}</span>`;
     }
-    if (stepName === 'Published' && item.status === 'Published') {
-      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${item.publishedBy || ngo.primaryContact || 'Irene'} <br/> ${formatTime(item.publishedAt) || 'Done'}</span>`;
+    if (stepName === 'Published' && (item.publishedBy || item.published_by || item.publishedAt || item.published_at || item.status === 'Published')) {
+      const pubBy = item.publishedBy || item.published_by || ngo.primaryContact || 'Irene';
+      const pubAt = item.publishedAt || item.published_at;
+      return `<span style="font-size:0.6rem; color:#15803d; opacity:0.85; line-height:1.2;">By: ${pubBy} <br/> ${formatTime(pubAt) || 'Done'}</span>`;
     }
     return '';
   };
@@ -3848,8 +3859,8 @@ function openBufferComposerModal(item, container) {
       return `
         <div class="outstanding-box" style="background:#dcfce7; border:1px solid #bbf7d0; color:#166534; padding:0.75rem; border-radius:8px; font-size:0.75rem; margin-bottom:1rem; line-height:1.4;">
           <strong>✅ Published/Complete</strong>
-          <div style="margin-top:0.25rem;">• Post is live on <strong>${item.platform}</strong>.</div>
-          <div>• Status: Complete. All workflow stages successfully navigated.</div>
+          <div style="margin-top:0.25rem;">• Outstanding: None — work complete</div>
+          <div>• Post is live on <strong>${item.platform}</strong>.</div>
         </div>
       `;
     }
@@ -3889,7 +3900,7 @@ function openBufferComposerModal(item, container) {
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
-            <h2>📱 Buffer Composer & Social Channel Preview</h2>
+            <h2>📱 Buffer Composer & Social Channel Preview <span class="status-badge" style="font-size:0.8rem; margin-left:0.5rem; background:${badgeBg}; color:${badgeFg}; border:${badgeBorder}; padding:2px 8px; border-radius:12px; vertical-align:middle; display:inline-block; font-weight:700;">${item.status}</span></h2>
             <button class="close-modal-btn" id="closeGlobalModal">×</button>
           </div>
           <div class="modal-body buffer-composer-body" style="padding-top: 0.75rem;">
@@ -4299,7 +4310,12 @@ export function renderReportsCenter(container) {
           <tbody>
             ${listReports.map(r => {
               const ngo = state.clients.find(c => c.id === r.client) || { name: 'Client NGO', logo: '🌐' };
-              let statusClass = r.status.toLowerCase().replace(' ', '-');
+              let statusClass = 'yellow';
+              if (r.status === 'Submitted' || r.status === 'Published') {
+                statusClass = 'green';
+              } else if (r.status === 'Drafting' || r.status === 'Draft') {
+                statusClass = 'red';
+              }
               return `
                 <tr>
                   <td><strong>${r.name}</strong></td>
@@ -4381,8 +4397,24 @@ export function renderImpactDashboard(container) {
     });
   } else {
     // Client scope
-    metrics = state.impactMetrics[state.selectedClientId] || metrics;
+    const m = state.impactMetrics[state.selectedClientId];
+    if (m) {
+      metrics = { ...m };
+    }
   }
+
+  // Calculate dynamic published items count
+  const publishedContentCount = state.content.filter(c => {
+    const matchesClient = state.currentUserRole === 'admin' || c.client === state.selectedClientId;
+    return c.status === 'Published' && matchesClient;
+  }).length;
+
+  const publishedReportsCount = state.reports.filter(r => {
+    const matchesClient = state.currentUserRole === 'admin' || (r.clientId || r.client_id || r.client) === state.selectedClientId;
+    return (r.status === 'Published' || r.status === 'Submitted') && matchesClient;
+  }).length;
+
+  metrics.reportsSubmitted = publishedContentCount + publishedReportsCount;
 
   container.innerHTML = `
     <div class="section-header-row mb-6">
@@ -7791,9 +7823,11 @@ function openDraftModal(draftText, opportunityId) {
 }
 
 // 3. Exporter preview modal (Reports Center)
-function openReportExportModal(report) {
+function openReportExportModal(report, container) {
   const clientName = state.clients.find(c => c.id === report.client)?.name || 'Client NGO';
   const modal = document.getElementById('globalModalContainer');
+  const isRepPublished = report.status === 'Published' || report.status === 'Submitted';
+
   modal.innerHTML = `
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
@@ -7802,11 +7836,25 @@ function openReportExportModal(report) {
           <button class="close-modal-btn" id="closeGlobalModal">×</button>
         </div>
         <div class="modal-body">
-          <div class="export-preview-header-row mb-4">
+          <div class="export-preview-header-row mb-4" style="display:flex; justify-content:space-between; align-items:center;">
             <span>Client: <strong>${clientName}</strong></span>
             <span>Completion: <strong>${report.completion}%</strong></span>
-            <span>Funder Status: <strong>${report.status}</strong></span>
+            <span>Funder Status: <strong style="background:${isRepPublished ? '#dcfce7' : '#eff6ff'}; color:${isRepPublished ? '#15803d' : '#1d4ed8'}; border:1px solid ${isRepPublished ? '#86efac' : '#3b82f6'}; padding:2px 8px; border-radius:12px; font-weight:700;">${report.status}</strong></span>
           </div>
+
+          ${isRepPublished ? `
+            <div class="outstanding-box" style="background:#dcfce7; border:1px solid #bbf7d0; color:#166534; padding:0.75rem; border-radius:8px; font-size:0.75rem; margin-bottom:1rem; line-height:1.4;">
+              <strong>✅ Published/Complete</strong>
+              <div style="margin-top:0.25rem;">• Outstanding: None — work complete</div>
+              <div>• Report has been successfully finalized and submitted.</div>
+            </div>
+          ` : `
+            <div class="outstanding-box" style="background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:0.75rem; border-radius:8px; font-size:0.75rem; margin-bottom:1rem; line-height:1.4;">
+              <strong>📋 What is outstanding?</strong>
+              <div style="margin-top:0.25rem;">• Outstanding: Report needs to be published/submitted to the funder.</div>
+              <div>• Action: Click <strong>"Publish Report"</strong> below.</div>
+            </div>
+          `}
 
           <!-- Document mock display -->
           <div class="document-printable-sheet">
@@ -7829,11 +7877,16 @@ function openReportExportModal(report) {
           </div>
 
           <div class="export-buttons-group mt-6">
-            <span>Export to standard document formats:</span>
-            <div class="buttons-row">
+            <span>Export and Submission Actions:</span>
+            <div class="buttons-row" style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.5rem;">
               <button class="btn btn-outline pdf-export-trigger">⬇ Download PDF</button>
               <button class="btn btn-outline word-export-trigger">⬇ Download MS Word</button>
               <button class="btn btn-outline ppt-export-trigger">⬇ Download PowerPoint</button>
+              ${!isRepPublished ? `
+                <button class="btn btn-primary publish-report-trigger" style="background:#10b981; border-color:#10b981; color:white; font-weight:700;">🚀 Publish Report</button>
+              ` : `
+                <button class="btn btn-primary" disabled style="background:#e2e8f0; border-color:#cbd5e1; color:#94a3b8; cursor:not-allowed;">✅ Already Published</button>
+              `}
             </div>
           </div>
         </div>
@@ -7845,6 +7898,18 @@ function openReportExportModal(report) {
   document.getElementById('closeGlobalModal').addEventListener('click', () => {
     modal.style.display = 'none';
   });
+
+  const publishTrigger = modal.querySelector('.publish-report-trigger');
+  if (publishTrigger) {
+    publishTrigger.addEventListener('click', async () => {
+      await updateReportStatus(report.id, 'Published');
+      alert('Report published successfully!');
+      modal.style.display = 'none';
+      if (container) {
+        renderReportsCenter(container);
+      }
+    });
+  }
 
   const triggerDownload = (content, filename, type) => {
     const blob = new Blob([content], { type: type });

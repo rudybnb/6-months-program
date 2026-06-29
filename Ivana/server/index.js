@@ -1085,6 +1085,30 @@ app.get('/api/clients/:id/reports', authenticateToken, checkClientAccess, async 
   }
 });
 
+app.put('/api/reports/:id/status', authenticateToken, async (req, res) => {
+  const { status } = req.body;
+  if (!status) {
+    return res.status(400).json({ message: 'Status is required.' });
+  }
+  try {
+    const report = await db('reports').where({ id: req.params.id }).first();
+    if (!report) {
+      return res.status(404).json({ message: 'Report not found.' });
+    }
+    const updates = {
+      status,
+      updated_at: new Date().toISOString()
+    };
+    if (status === 'Published' || status === 'Submitted') {
+      updates.completion = 100;
+    }
+    await db('reports').where({ id: req.params.id }).update(updates);
+    res.json({ message: 'Report status updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.get('/api/clients/:id/campaigns', authenticateToken, checkClientAccess, async (req, res) => {
   try {
     const data = await db('campaigns').where({ clientId: req.params.id }).orderBy('created_at', 'desc');
